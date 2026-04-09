@@ -138,6 +138,9 @@ Deeper guides for each subsystem live in [`docs/`](docs/):
 - [**Architecture**](docs/architecture.md) — the package layout for
   contributors, plus how the hooks fit together.
 
+The [**roadmap**](ROADMAP.md) lists what might land next — open an
+issue if you want any of it to land sooner.
+
 ## Testing
 
 ```bash
@@ -151,4 +154,4 @@ are documented in the commit history.
 
 ## License
 
-Apache 2.0. Built by [Impulse Studio](https://impulse.studio).
+Apache 2.0. Built by [Impulse Lab](https://impulselab.ai).
