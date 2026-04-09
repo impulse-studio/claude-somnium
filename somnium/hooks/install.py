@@ -1,19 +1,24 @@
-"""Install / uninstall Somnium hooks and MCP server in ~/.claude/settings.json.
+"""Install / uninstall Somnium hooks and MCP server.
 
-We edit settings.json idempotently:
-  - Register a PostToolUse matcher for Write|Edit|MultiEdit|NotebookEdit
-    pointing at `somnium-hook-post-tool-use`.
-  - Register a Stop hook pointing at `somnium-hook-stop`.
-  - Register a UserPromptSubmit hook pointing at `somnium-hook-user-prompt-submit`.
-  - Register the `somnium` MCP server pointing at `somnium-mcp`.
+Two distinct edits:
 
-Each hook entry is tagged with a `_somnium` marker so we can find and
-remove them on uninstall without touching user-maintained hooks.
+1. **Hooks** are written to `~/.claude/settings.json` under
+   `hooks.{PostToolUse,Stop,UserPromptSubmit}`. Each Somnium-managed
+   group is tagged with `_somnium: true` so uninstall can find them
+   without touching user-maintained hooks.
+
+2. **The MCP server** is registered via the canonical
+   `claude mcp add` CLI (which writes to `~/.claude.json` under user
+   scope). We do NOT edit that file directly because Claude Code may
+   change its schema, and the CLI handles edge cases like health
+   checks and scope semantics.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +26,25 @@ SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 SOMNIUM_MARKER = "_somnium"
 SOMNIUM_MCP_NAME = "somnium"
 SOMNIUM_MCP_COMMAND = "somnium-mcp"
+
+
+def _resolve_bin(name: str) -> str:
+    """Return the absolute path to a Somnium CLI binary.
+
+    Claude Code launches hooks and MCP servers from a clean shell that
+    typically does NOT include the Python venv on PATH, so we always
+    register the absolute path of the binary that ships next to the
+    current interpreter.
+    """
+    resolved = shutil.which(name)
+    if resolved:
+        return resolved
+    import sys
+
+    candidate = Path(sys.executable).parent / name
+    if candidate.exists():
+        return str(candidate)
+    return name  # last-resort: hope it's on PATH at runtime
 
 
 @dataclass
@@ -84,6 +108,88 @@ def _is_somnium_hook(hook_group: dict) -> bool:
     return False
 
 
+def _claude_cli_available() -> bool:
+    return shutil.which("claude") is not None
+
+
+def _mcp_server_present() -> bool:
+    """Best-effort check whether the somnium MCP server is already
+    registered at user scope. Falls back to False on any error."""
+    try:
+        result = subprocess.run(
+            ["claude", "mcp", "get", SOMNIUM_MCP_NAME],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _resolve_mcp_command() -> str:
+    return _resolve_bin(SOMNIUM_MCP_COMMAND)
+
+
+def _install_mcp_server() -> str:
+    """Register the somnium MCP server via the canonical CLI."""
+    if not _claude_cli_available():
+        return "x mcpServers.somnium SKIPPED (claude CLI not on PATH)"
+
+    if _mcp_server_present():
+        return f"= mcpServers.{SOMNIUM_MCP_NAME} already registered"
+
+    command_path = _resolve_mcp_command()
+
+    try:
+        proc = subprocess.run(
+            [
+                "claude",
+                "mcp",
+                "add",
+                "--scope",
+                "user",
+                SOMNIUM_MCP_NAME,
+                command_path,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if proc.returncode == 0:
+            return f"+ mcpServers.{SOMNIUM_MCP_NAME} -> {command_path}"
+        return (
+            f"x mcpServers.{SOMNIUM_MCP_NAME} FAILED: "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"x mcpServers.{SOMNIUM_MCP_NAME} FAILED: {exc}"
+
+
+def _uninstall_mcp_server() -> str | None:
+    """Unregister via CLI. Returns an action string or None if nothing
+    needed to be done."""
+    if not _claude_cli_available():
+        return None
+    if not _mcp_server_present():
+        return None
+    try:
+        proc = subprocess.run(
+            ["claude", "mcp", "remove", "--scope", "user", SOMNIUM_MCP_NAME],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if proc.returncode == 0:
+            return f"- mcpServers.{SOMNIUM_MCP_NAME}"
+        return (
+            f"x mcpServers.{SOMNIUM_MCP_NAME} REMOVE FAILED: "
+            f"{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"x mcpServers.{SOMNIUM_MCP_NAME} REMOVE FAILED: {exc}"
+
+
 def install_hooks(dry_run: bool = False) -> list[str]:
     """Install all Somnium hooks AND register the Somnium MCP server.
     Returns a list of human-readable actions that were (or would be) taken."""
@@ -108,12 +214,13 @@ def install_hooks(dry_run: bool = False) -> list[str]:
             existing = group
             break
 
+        absolute_command = _resolve_bin(spec.command)
         new_group = {
             SOMNIUM_MARKER: True,
             "hooks": [
                 {
                     "type": "command",
-                    "command": spec.command,
+                    "command": absolute_command,
                     "timeout": spec.timeout,
                 }
             ],
@@ -123,35 +230,39 @@ def install_hooks(dry_run: bool = False) -> list[str]:
 
         if existing is None:
             event_list.append(new_group)
-            actions.append(f"+ {spec.event} ({spec.matcher or '*'}) -> {spec.command}")
+            actions.append(
+                f"+ {spec.event} ({spec.matcher or '*'}) -> {absolute_command}"
+            )
         else:
             # Update in place if the inner command differs.
             if existing != new_group:
                 existing.clear()
                 existing.update(new_group)
                 actions.append(
-                    f"~ {spec.event} ({spec.matcher or '*'}) -> {spec.command}"
+                    f"~ {spec.event} ({spec.matcher or '*'}) -> {absolute_command}"
                 )
             else:
                 actions.append(
                     f"= {spec.event} ({spec.matcher or '*'}) already installed"
                 )
 
-    # ----- MCP server ---------------------------------------------
-    mcp_section = settings.setdefault("mcpServers", {})
-    desired_entry = {"command": SOMNIUM_MCP_COMMAND}
-    existing_entry = mcp_section.get(SOMNIUM_MCP_NAME)
-    if existing_entry == desired_entry:
-        actions.append(f"= mcpServers.{SOMNIUM_MCP_NAME} already registered")
-    else:
-        mcp_section[SOMNIUM_MCP_NAME] = desired_entry
-        verb = "+" if existing_entry is None else "~"
-        actions.append(
-            f"{verb} mcpServers.{SOMNIUM_MCP_NAME} -> {SOMNIUM_MCP_COMMAND}"
-        )
+    # Strip any leftover legacy mcpServers entry from settings.json —
+    # earlier versions wrote it there. Canonical location is ~/.claude.json.
+    if isinstance(settings.get("mcpServers"), dict):
+        if SOMNIUM_MCP_NAME in settings["mcpServers"]:
+            del settings["mcpServers"][SOMNIUM_MCP_NAME]
+        if not settings["mcpServers"]:
+            del settings["mcpServers"]
 
     if not dry_run:
         _save_settings(settings)
+
+    # ----- MCP server (via canonical CLI) -------------------------
+    if not dry_run:
+        actions.append(_install_mcp_server())
+    else:
+        actions.append(f"+ mcpServers.{SOMNIUM_MCP_NAME} (would call `claude mcp add`)")
+
     return actions
 
 
@@ -181,14 +292,17 @@ def uninstall_hooks(dry_run: bool = False) -> list[str]:
         if not hooks_section:
             settings.pop("hooks", None)
 
-    # Unregister MCP server
+    # Strip any legacy mcpServers entry from settings.json
     mcp_section = settings.get("mcpServers", {})
     if isinstance(mcp_section, dict) and SOMNIUM_MCP_NAME in mcp_section:
         del mcp_section[SOMNIUM_MCP_NAME]
-        actions.append(f"- mcpServers.{SOMNIUM_MCP_NAME}")
         if not mcp_section:
             settings.pop("mcpServers", None)
 
     if not dry_run:
         _save_settings(settings)
+        # Canonical MCP unregister via CLI
+        action = _uninstall_mcp_server()
+        if action:
+            actions.append(action)
     return actions

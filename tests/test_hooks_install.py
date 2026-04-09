@@ -12,9 +12,20 @@ from somnium.hooks import install as install_module
 
 @pytest.fixture
 def fake_settings(tmp_path: Path, monkeypatch):
-    """Redirect SETTINGS_PATH to a tmp file."""
+    """Redirect SETTINGS_PATH to a tmp file and stub out the MCP CLI
+    helpers so tests don't depend on `claude mcp add` working."""
     settings_path = tmp_path / "settings.json"
     monkeypatch.setattr(install_module, "SETTINGS_PATH", settings_path)
+    monkeypatch.setattr(
+        install_module,
+        "_install_mcp_server",
+        lambda: "+ mcpServers.somnium -> somnium-mcp",
+    )
+    monkeypatch.setattr(
+        install_module,
+        "_uninstall_mcp_server",
+        lambda: "- mcpServers.somnium",
+    )
     return settings_path
 
 
@@ -25,14 +36,15 @@ def _read(path: Path) -> dict:
 def test_install_from_empty_file(fake_settings):
     actions = install_module.install_hooks()
     assert any("PostToolUse" in a for a in actions)
+    assert any("mcpServers.somnium" in a for a in actions)
     data = _read(fake_settings)
     assert "hooks" in data
     assert "PostToolUse" in data["hooks"]
     assert "Stop" in data["hooks"]
     assert "UserPromptSubmit" in data["hooks"]
-    # MCP server must also be registered
-    assert "mcpServers" in data
-    assert data["mcpServers"]["somnium"] == {"command": "somnium-mcp"}
+    # MCP server is registered via `claude mcp add` (out of band), not
+    # in settings.json. The settings file should NOT have mcpServers.
+    assert "mcpServers" not in data
 
 
 def test_install_preserves_existing_hooks(fake_settings):
@@ -62,7 +74,8 @@ def test_install_preserves_existing_hooks(fake_settings):
     user_hook = next(g for g in stop_list if not g.get("_somnium"))
     assert user_hook["hooks"][0]["command"] == "my-own-hook"
     somnium_hook = next(g for g in stop_list if g.get("_somnium"))
-    assert somnium_hook["hooks"][0]["command"] == "somnium-hook-stop"
+    # Hooks are registered with their absolute path for PATH-independence.
+    assert somnium_hook["hooks"][0]["command"].endswith("somnium-hook-stop")
 
 
 def test_install_idempotent(fake_settings):
@@ -108,7 +121,10 @@ def test_uninstall_removes_empty_event_keys(fake_settings):
     assert "mcpServers" not in data
 
 
-def test_uninstall_preserves_other_mcp_servers(fake_settings):
+def test_install_strips_legacy_mcpservers_entry(fake_settings):
+    """Older versions wrote mcpServers.somnium to settings.json. The
+    new install path should clean that up while preserving other MCP
+    entries that may have been put there manually."""
     fake_settings.write_text(
         json.dumps(
             {
@@ -120,14 +136,14 @@ def test_uninstall_preserves_other_mcp_servers(fake_settings):
         ),
         encoding="utf-8",
     )
-    install_module.uninstall_hooks()
+    install_module.install_hooks()
     data = _read(fake_settings)
-    assert "mcpServers" in data
-    assert "somnium" not in data["mcpServers"]
+    assert "somnium" not in data.get("mcpServers", {})
     assert data["mcpServers"]["other"] == {"command": "other-mcp"}
 
 
-def test_uninstall_noop_on_missing_file(fake_settings):
-    # fake_settings doesn't exist yet
+def test_uninstall_noop_on_missing_file(fake_settings, monkeypatch):
+    # fake_settings doesn't exist yet AND no MCP server is registered.
+    monkeypatch.setattr(install_module, "_uninstall_mcp_server", lambda: None)
     actions = install_module.uninstall_hooks()
     assert actions == []

@@ -32,10 +32,29 @@ from ._common import log_error, log_info, read_event
 HOOK_NAME = "stop"
 
 
+def _resolve_dream_runner_path() -> str:
+    """Find the absolute path to the somnium-dream-run binary.
+
+    Claude Code launches hooks from a clean shell that may not include
+    our venv on PATH, so we always use an absolute path.
+    """
+    import shutil
+    import sys
+
+    resolved = shutil.which("somnium-dream-run")
+    if resolved:
+        return resolved
+    candidate = Path(sys.executable).parent / "somnium-dream-run"
+    if candidate.exists():
+        return str(candidate)
+    return "somnium-dream-run"
+
+
 def _spawn_detached_runner(transcript_path: str, cwd: str | None) -> None:
     """Fire-and-forget the dream runner. The parent exits immediately."""
     env = os.environ.copy()
-    cmd = ["somnium-dream-run", "--transcript", transcript_path]
+    runner_path = _resolve_dream_runner_path()
+    cmd = [runner_path, "--transcript", transcript_path]
     if cwd:
         cmd.extend(["--cwd", cwd])
 
