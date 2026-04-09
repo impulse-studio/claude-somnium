@@ -1,182 +1,142 @@
 # Somnium
 
-**Second brain, RAG memory and semantic code search for Claude Code.**
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-81_passing-brightgreen.svg)](#testing)
 
-Somnium is a CLI + MCP server + hook bundle that gives Claude Code a
-persistent memory layer backed by vector search, and a "dream mode" that
-analyzes your sessions after they end and auto-updates your memories,
-skills and `CLAUDE.md` files.
+> A long-term memory and dream loop for Claude Code.
 
-> Status: alpha. Phases 1–5 working end-to-end. Serena-based symbolic
-> code search (phase 4b) is deferred.
+Somnium turns Claude Code into something that **remembers**. After every
+session, a small Claude sub-agent reads the transcript and writes down what
+was worth keeping — your conventions, your "we always do X here" rules, the
+quirks of the project you just touched. The next time you open Claude Code,
+the relevant pieces are already in context before you type your first prompt.
 
-## Features
+It also gives Claude a real semantic search over your memories *and* your
+code, exposed as MCP tools.
 
-| Phase | Feature | Status |
-|---|---|---|
-| 1 | Markdown-first memory store + Voyage AI embeddings + DuckDB vector index | ✅ |
-| 1 | MCP server: `memory_search`, `memory_write`, `memory_status` | ✅ |
-| 2 | `PostToolUse` hook: incremental reindex when Claude writes/edits a file | ✅ |
-| 2 | Hook installer: `somnium init` wires settings.json idempotently | ✅ |
-| 3 | Dream mode: `Stop` hook → gate → `claude -p` sub-agent → router → files | ✅ |
-| 3 | Auto-routing: global memory / project memory / skills / `CLAUDE.md` patches | ✅ |
-| 3 | Per-session digest markdown | ✅ |
-| 4 | Semantic code search via `voyage-code-3` + MCP `code_search_semantic` | ✅ |
-| 4b | Symbolic code search via Serena/LSP | deferred |
-| 5 | `UserPromptSubmit` hook: light context injection with token budget | ✅ |
+```mermaid
+sequenceDiagram
+    autonumber
+    participant You
+    participant Claude as Claude Code
+    participant Mem as Markdown memory
+    participant Dream as Dream agent
 
-- **Markdown-first memory.** Memories live as `.md` files you can read,
-  edit and version. A local DuckDB vector index is a derivable cache.
-- **Voyage AI embeddings.** Uses `voyage-3.5` for text and `voyage-code-3`
-  for code, configurable via `~/.claude/somnium/config.toml`.
-- **Dream mode.** A Stop-hook spawns a detached Claude sub-agent that
-  reviews your session, classifies what is worth persisting (global
-  memory, project memory, skill, `CLAUDE.md` patch, or trash) and
-  auto-edits the right files. Review via git for anything in a repo.
-- **Semantic code search.** Per-project on-demand index via
-  `somnium index --code`, queryable through the MCP server.
-- **Light context injection.** A `UserPromptSubmit` hook runs a
-  top-K memory search for every new prompt and injects the hits into
-  the turn's context, bounded by a token budget.
-- **Recursion-safe.** The dream sub-agent carries an env var marker so
-  our own Stop hook detects it and no-ops, preventing infinite loops.
+    Mem-->>Claude: inject relevant context (UserPromptSubmit)
+    You->>Claude: prompt
+    Claude->>Claude: edits code, runs tools
+    Claude-->>Mem: incremental reindex (PostToolUse)
+    Note over Claude: session ends
+    Claude->>Dream: Stop hook triggers gate
+    Dream->>Dream: read transcript, classify
+    Dream->>Mem: write new memories + CLAUDE.md patches
+    Note over You,Mem: next session starts with the new context
+```
 
-## Scoping
+---
 
-- **Global memory** lives in `~/.claude/somnium/memory/` and applies
-  across every repo.
-- **Project memory** lives in `<repo>/.claude/somnium/memory/` and is
-  scoped to that repo. It merges with global at query time.
-
-## Install
+## Quick start
 
 ```bash
 pipx install claude-somnium
-somnium init                    # creates ~/.claude/somnium/ and wires hooks
-somnium init --project          # optional, adds .claude/somnium/ to current repo
+
+export VOYAGE_API_KEY=pa-...    # https://voyageai.com (free tier OK)
+
+somnium init                    # global setup + register hooks + MCP server
+cd my-project && somnium init --project   # opt this repo into project memory
+somnium index --code            # (optional) build a semantic index of the repo
 ```
 
-Then set your Voyage API key in `~/.claude/somnium/config.toml` or via
-the `VOYAGE_API_KEY` environment variable. Get one at
-[voyageai.com](https://www.voyageai.com/).
+That's it. Open Claude Code anywhere and the memory + dream loop runs automatically.
 
-## Usage
+## What you get
 
-```bash
-somnium init                    # create ~/.claude/somnium and install hooks
-somnium init --project          # also add .claude/somnium to the current repo
-somnium index                   # build/refresh the global memory index
-somnium index --code            # index the current project's source code
-somnium reindex                 # re-check all files and upsert changes
-somnium search "query"          # debug CLI search
-somnium status                  # show counts and health
-somnium dream [-t path] [--force]  # manually run the dream agent
-somnium uninstall               # remove hooks from settings.json
-```
+- **Persistent memory across sessions.** Markdown files indexed by Voyage
+  AI embeddings. The index is a derivable cache — your `.md` files are
+  the source of truth, version them with git like everything else.
+- **A dream loop after every session.** A detached Claude sub-agent
+  reviews what just happened and writes down preferences, conventions,
+  and `CLAUDE.md` patches automatically. Skips trivial sessions
+  ("commit this", short Q&A) so you don't burn tokens on nothing.
+- **Auto-injected context on every prompt.** A `UserPromptSubmit` hook
+  searches your memory before Claude even sees the prompt and attaches
+  the most relevant chunks, bounded by a token budget.
+- **Semantic code search.** Per-project index built on demand with
+  `voyage-code-3`. Exposed as the `code_search_semantic` MCP tool so
+  Claude can use it instead of grepping blindly.
 
-Once installed, Claude Code will auto-load the Somnium MCP server and
-its hooks. Claude can call:
+## Example: a typical session
 
-- `memory_search(query, scope, top_k)` — semantic search on your memories
-- `memory_write(content, scope, title, tags)` — append a memory
-- `memory_status()` — health snapshot
-- `code_search_semantic(query, top_k)` — embedding-based code search
+You're refactoring a React project. Halfway through you tell Claude:
 
-## How the dream mode works
+> "Actually, shared components live in `src/components/shared/` from now
+> on, and feature components go under `src/features/<name>/`."
 
-1. You finish a Claude Code session (hit the Stop).
-2. The `Stop` hook fires `somnium-hook-stop` which runs the **gate**:
-   - < N user messages → skip.
-   - every user message matches a trivial pattern → skip.
-   - no file writes and short Q&A → skip.
-   - otherwise → dispatch a **detached** `somnium-dream-run` subprocess.
-3. `somnium-dream-run` spawns `claude -p` with:
-   - the dream system prompt + your session transcript,
-   - `--output-format json` and `--json-schema`,
-   - `SOMNIUM_DREAM_SUBAGENT=1` env var (prevents hook recursion).
-4. The sub-agent returns a classified JSON payload.
-5. The **router** writes each item to the right location and triggers
-   incremental reindex.
-6. A per-session digest markdown is written to
-   `~/.claude/somnium/dream/sessions/`.
+Claude does the refactor, you move on, you quit.
 
-Typical dream run cost with Sonnet 4.6: ~$0.08–0.12 per session.
-Configure `dream.model` to `claude-haiku-4-5` in your config to
-bring that down.
-
-## Configuration
-
-See `somnium/templates/config.toml` for the full default config. Any
-key can be overridden per-project in `<repo>/.claude/somnium/project.toml`.
-
-Key knobs:
-
-```toml
-[embeddings]
-api_key_env = "VOYAGE_API_KEY"   # or put `api_key = "..."` directly
-model_text = "voyage-3.5"
-model_code = "voyage-code-3"
-
-[dream]
-enabled = true
-model = "claude-sonnet-4-6"
-gate_model = "claude-haiku-4-5"
-
-[dream.gate]
-min_user_messages = 3
-skip_patterns = ["^commit( this)?$", "^push( this)?$", "^run tests?$"]
-
-[context_injection]
-enabled = true
-top_k = 5
-context_budget_tokens = 2000
-scopes = ["project", "global", "skills"]
-
-[code_search]
-semantic_chunk_lines = 40
-ignore = ["node_modules", ".venv", "dist", "build"]
-```
-
-## Configuration
-
-See `somnium/templates/config.toml` for the full default config. You
-can override any key per-project in `<repo>/.claude/somnium/project.toml`.
-
-## Architecture
+The Stop hook fires. The dream gate sees a real implementation
+conversation (file writes + a stated preference, not just "commit this")
+and dispatches a background sub-agent. ~20 seconds and ~$0.10 later:
 
 ```
-somnium/
-├── cli.py               # typer app — user-facing CLI
-├── config.py            # pydantic config, global/project merge, SOMNIUM_HOME
-├── indexer.py           # markdown indexer orchestrator
-├── mcp_server.py        # FastMCP server — tools for Claude Code
-├── storage/
-│   ├── markdown.py      # frontmatter parsing, H1/H2/H3 chunking
-│   ├── vector.py        # DuckDB vector store (cosine similarity)
-│   └── scope.py         # Scope enum + normalization
-├── embeddings/
-│   └── voyage.py        # Voyage AI wrapper with batching + retry
-├── code/
-│   ├── chunker.py       # Source code line-group chunking
-│   ├── walker.py        # Repo walker with ignore rules
-│   ├── indexer.py       # Code index builder
-│   └── semantic.py      # Query interface
-├── hooks/
-│   ├── install.py       # Idempotent settings.json editor
-│   ├── _common.py       # stdin reader, logging, path routing
-│   ├── post_tool_use.py # Memory + code incremental reindex
-│   ├── stop.py          # Dream gate dispatcher
-│   └── user_prompt_submit.py  # Context injection
-└── dream/
-    ├── transcript.py    # Parse Claude Code JSONL transcripts
-    ├── gate.py          # Heuristic decisioning
-    ├── prompts.py       # System prompt + JSON schema
-    ├── agent.py         # Spawn `claude -p` sub-agent
-    ├── router.py        # Dispatch items to files
-    ├── digest.py        # Per-session markdown digest
-    ├── runner.py        # Pipeline orchestration
-    └── cli_runner.py    # Detached runner entry point
+my-project/
+├── CLAUDE.md                           # ← one-line patch appended
+└── .claude/somnium/memory/
+    └── 2026-04-10-react-component-layout.md   # ← new file
 ```
+
+Both are real files you can `git diff`, accept, or revert.
+
+A week later you start a new session in that repo and type *"add a Modal
+component"*. Before Claude sees the prompt, the `UserPromptSubmit` hook
+has already searched your memory, found the layout convention, and
+injected it. Claude knows where the file belongs without being re-told.
+
+## MCP tools available to Claude
+
+| Tool | What it does |
+|------|--------------|
+| `memory_search(query, scope, top_k)` | Semantic search across global, project, and skill memories. |
+| `memory_write(content, scope, title, tags)` | Append a memory mid-session and auto-reindex it. |
+| `memory_status()` | Health snapshot — counts, scopes, dream state. |
+| `code_search_semantic(query, top_k)` | Natural-language search over the project's source code. |
+
+## Memory scoping
+
+- **Global memory** lives in `~/.claude/somnium/memory/` and applies to
+  every project (e.g. *"always use Graphite to push branches"*).
+- **Project memory** lives in `<repo>/.claude/somnium/memory/` and is
+  scoped to that repo (e.g. *"shared components go in `src/components/shared/`"*).
+
+The dream agent decides which scope each new memory belongs to based on
+language cues (*"always"* vs *"in this project"*). Both scopes are
+queried together at search time.
+
+## CLI reference
+
+```
+somnium init [--project] [--force]      create folders, copy config, install hooks
+somnium index [--code]                   embed memories and (optionally) source code
+somnium reindex                          re-check every file and upsert changes
+somnium search "query" [-k 5] [-s scope] debug search from the shell
+somnium status                           health snapshot
+somnium dream [-t path] [--force]        manually run the dream agent
+somnium uninstall [--delete-data]        remove hooks; data is kept by default
+```
+
+## Documentation
+
+Deeper guides for each subsystem live in [`docs/`](docs/):
+
+- [**Dream mode**](docs/dream-mode.md) — how the gate decides, what the
+  agent does, the per-session digest, full prompt and JSON schema.
+- [**Code search**](docs/code-search.md) — building and querying the
+  semantic code index, ignore rules, incremental updates.
+- [**Configuration**](docs/configuration.md) — every key in
+  `config.toml`, per-project overrides, env vars.
+- [**Architecture**](docs/architecture.md) — the package layout for
+  contributors, plus how the hooks fit together.
 
 ## Testing
 
@@ -185,9 +145,10 @@ pip install -e '.[dev]'
 pytest
 ```
 
-The test suite uses a fake embedder so it runs in ~1s without touching
-the Voyage API.
+The suite uses a fake embedder so it runs in about a second and costs
+nothing. End-to-end runs against the real Voyage API and `claude -p`
+are documented in the commit history.
 
 ## License
 
-Apache-2.0.
+Apache 2.0. Built by [Impulse Studio](https://impulse.studio).
