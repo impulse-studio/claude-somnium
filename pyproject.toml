@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-somnium"
+version = "0.1.0"
+description = "Second brain, RAG memory and dual code search for Claude Code"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "Somnium contributors" }]
+keywords = ["claude", "claude-code", "mcp", "rag", "memory", "second-brain"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
+]
+
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "mcp>=1.0",
+    "duckdb>=1.1",
+    "voyageai>=0.3",
+    "python-frontmatter>=1.1",
+    "markdown-it-py>=3.0",
+    "platformdirs>=4.2",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+somnium = "somnium.cli:app"
+somnium-mcp = "somnium.mcp_server:main"
+somnium-hook-post-tool-use = "somnium.hooks.post_tool_use:main"
+somnium-hook-stop = "somnium.hooks.stop:main"
+somnium-hook-user-prompt-submit = "somnium.hooks.user_prompt_submit:main"
+somnium-dream-run = "somnium.dream.cli_runner:main"
+
+[project.urls]
+Homepage = "https://github.com/impulse-studio/claude-somnium"
+Issues = "https://github.com/impulse-studio/claude-somnium/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["somnium"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

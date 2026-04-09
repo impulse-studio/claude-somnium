@@ -1,0 +1,55 @@
+# Somnium configuration.
+# This file lives at ~/.claude/somnium/config.toml.
+# You can override any key per-project in <repo>/.claude/somnium/project.toml.
+
+[embeddings]
+# Provider for embeddings. Only "voyage" is supported in Phase 1.
+provider = "voyage"
+model_text = "voyage-3.5"
+model_code = "voyage-code-3"
+# Environment variable to read the API key from. You can also put the
+# key directly in `api_key = "..."` but env var is recommended.
+api_key_env = "VOYAGE_API_KEY"
+# api_key = ""
+batch_size = 64
+
+[storage]
+# Where global memories and the global index live.
+global_root = "~/.claude/somnium"
+# Per-project data directory (relative to repo root).
+project_marker = ".claude/somnium"
+
+[dream]
+# Whether the Stop-hook dream agent runs at all.
+enabled = true
+# Model used by the dream agent. Uses `claude -p` under the hood, so this
+# must be a model your Claude Code install can reach.
+model = "claude-sonnet-4-6"
+# Smaller/cheaper model used by the gate when the heuristic is ambiguous.
+gate_model = "claude-haiku-4-5"
+
+[dream.gate]
+# Heuristic thresholds. Conversations that fail all of these skip the dream.
+min_user_messages = 3
+# Skip if the whole user side only contains patterns like these.
+skip_patterns = [
+    "^commit( this)?$",
+    "^push( this)?$",
+    "^run tests?$",
+    "^fix the typo$",
+]
+
+[context_injection]
+# UserPromptSubmit hook: inject top-K memory chunks for every prompt.
+enabled = true
+top_k = 5
+context_budget_tokens = 2000
+# Scopes to search, in priority order.
+scopes = ["project", "global", "skills"]
+
+[code_search]
+# Phase 4 features. Safe to leave enabled, they just no-op without an index.
+symbolic_enabled = true
+semantic_enabled = true
+semantic_chunk_lines = 40
+ignore = ["node_modules", ".venv", "venv", "dist", "build", ".git"]
