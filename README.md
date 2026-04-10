@@ -39,8 +39,9 @@ sequenceDiagram
 ## Quick start
 
 ```bash
-# 1. Install the CLI.
-pipx install claude-somnium
+# 1. Install the CLI (pick one).
+uv tool install claude-somnium       # if you use uv (faster)
+pipx install claude-somnium          # traditional alternative
 
 # 2. Drop your Voyage AI key in the env (or in ~/.claude/somnium/config.toml later).
 #    Free tier at https://voyageai.com is plenty.
