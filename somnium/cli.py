@@ -637,11 +637,27 @@ def search(
     query: str = typer.Argument(..., help="Query string."),
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of hits to return."),
     scope: str = typer.Option("all", "--scope", "-s", help="global|project|skills|all"),
+    code: bool = typer.Option(False, "--code", "-c", help="Search the code index instead of memories."),
     as_json: bool = typer.Option(False, "--json", help="Print raw JSON."),
 ) -> None:
-    """Debug helper: run a memory_search from the CLI."""
+    """Search memories or code from the CLI.
+
+    By default, searches across global + project memories. Pass --code
+    to search the per-project code index instead (requires a prior
+    `somnium index --code`).
+    """
     reset_config_cache()
     cfg = get_config()
+
+    if code:
+        _search_code(query, top_k, as_json, cfg)
+    else:
+        _search_memory(query, top_k, scope, as_json, cfg)
+
+
+def _search_memory(
+    query: str, top_k: int, scope: str, as_json: bool, cfg
+) -> None:
     from .embeddings import get_embedder
     from .storage.scope import normalize_scopes
 
@@ -665,7 +681,7 @@ def search(
         return
 
     if not all_hits:
-        console.print("[dim]no hits[/]")
+        console.print("[dim]no memory hits[/]")
         return
 
     for i, hit in enumerate(all_hits, 1):
@@ -675,6 +691,38 @@ def search(
         )
         preview = hit.text[:400].replace("\n", " ")
         console.print(f"   {preview}{'…' if len(hit.text) > 400 else ''}")
+
+
+def _search_code(query: str, top_k: int, as_json: bool, cfg) -> None:
+    from .code.semantic import search_code
+
+    hits = search_code(query, top_k=top_k, config=cfg)
+
+    if as_json:
+        typer.echo(json.dumps([h.to_dict() for h in hits], indent=2))
+        return
+
+    if not hits:
+        console.print(
+            "[dim]no code hits[/]"
+            + (
+                " (run [cyan]somnium index --code[/] first)"
+                if not (cfg.project_code_index_path and cfg.project_code_index_path.exists())
+                else ""
+            )
+        )
+        return
+
+    for i, hit in enumerate(hits, 1):
+        filename = hit.file_path.split("/")[-1]
+        lang = f"[dim][{hit.language}][/] " if hit.language else ""
+        lines = f":{hit.start_line}-{hit.end_line}" if hit.start_line else ""
+        console.print(
+            f"\n[bold]{i}.[/] [green]{hit.score:.3f}[/] "
+            f"{lang}[cyan]{filename}{lines}[/]"
+        )
+        preview = hit.text.split("\n")[0][:120]
+        console.print(f"   {preview}")
 
 
 # ----------------------------------------------------------------------
