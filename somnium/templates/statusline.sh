@@ -155,15 +155,15 @@ fi
 SOMNIUM_PART=""
 STATE_FILE="$HOME/.claude/somnium/state/prompt_context.json"
 if [ -f "$STATE_FILE" ]; then
-    S_HITS=$(jq -r '.n_hits // 0' "$STATE_FILE" 2>/dev/null || echo 0)
     S_SKILLS=$(jq -r '.n_skills // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+    S_MEM=$(jq -r '.n_memories // 0' "$STATE_FILE" 2>/dev/null || echo 0)
     PARTS=""
     if [ "$S_SKILLS" -gt 0 ] 2>/dev/null; then
         PARTS="${S_SKILLS} skills"
     fi
-    if [ "$S_HITS" -gt 0 ] 2>/dev/null; then
+    if [ "$S_MEM" -gt 0 ] 2>/dev/null; then
         [ -n "$PARTS" ] && PARTS+=" & "
-        PARTS+="${S_HITS} mem"
+        PARTS+="${S_MEM} mem"
     fi
     if [ -n "$PARTS" ]; then
         SOMNIUM_PART="${MAGENTA}${PARTS}${RESET}"

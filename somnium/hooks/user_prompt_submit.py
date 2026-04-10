@@ -154,9 +154,16 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     if n_included == 0:
         return {"skipped": "no hits"}
 
+    # Count skills vs memories from the included hits (first n_included).
+    included_hits = hits[:n_included]
+    n_skills = sum(1 for h in included_hits if "skill" in h.scope)
+    n_memories = n_included - n_skills
+
     return {
         "injected": True,
         "n_hits": n_included,
+        "n_skills": n_skills,
+        "n_memories": n_memories,
         "text": text,
     }
 
@@ -181,18 +188,27 @@ def main() -> None:
         sys.stdout.flush()
         log_info(
             HOOK_NAME,
-            f"injected {result['n_hits']} hits, "
+            f"injected {result['n_hits']} hits "
+            f"({result.get('n_skills', 0)} skills, "
+            f"{result.get('n_memories', 0)} mem), "
             f"{len(result['text'])} chars",
         )
-        _write_state(result["n_hits"], len(result["text"]))
+        _write_state(
+            n_hits=result["n_hits"],
+            n_skills=result.get("n_skills", 0),
+            n_memories=result.get("n_memories", 0),
+            chars=len(result["text"]),
+        )
     else:
         log_info(HOOK_NAME, str(result))
-        _write_state(0, 0)
+        _write_state(n_hits=0, n_skills=0, n_memories=0, chars=0)
 
     sys.exit(0)
 
 
-def _write_state(n_hits: int, chars: int) -> None:
+def _write_state(
+    *, n_hits: int, n_skills: int, n_memories: int, chars: int
+) -> None:
     """Write a small JSON file so the status line can show injection stats
     without parsing the hooks log. Best-effort, non-fatal."""
     try:
@@ -205,6 +221,8 @@ def _write_state(n_hits: int, chars: int) -> None:
             json.dumps(
                 {
                     "n_hits": n_hits,
+                    "n_skills": n_skills,
+                    "n_memories": n_memories,
                     "chars": chars,
                     "timestamp": dt.datetime.now().isoformat(),
                 }
