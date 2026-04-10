@@ -6,8 +6,8 @@ by hand, and you never run `twine upload`.
 
 ## One-time setup
 
-Before the first release can succeed, one thing must be configured
-on PyPI. Takes about two minutes.
+Before the first release can succeed, two things must be configured.
+Both take about two minutes total.
 
 ### 1. Register the project as a PyPI Trusted Publisher
 
@@ -22,26 +22,37 @@ to rotate, no tokens to leak.
    - **Owner**: `impulse-studio`
    - **Repository name**: `claude-somnium`
    - **Workflow name**: `release.yml`
-   - **Environment name**: *(leave empty)*
+   - **Environment name**: `pypi`
 3. Click **Add**.
 
 PyPI lets you register a publisher for a project that doesn't exist
 yet (they call it a "pending publisher"). The first successful upload
 from the workflow creates the project.
 
-> **Note on environments.** We intentionally don't use a GitHub
-> Environment for the release workflow. An environment would only be
-> useful if we needed a "wait for a human to approve" step — but the
-> workflow has no meaningful review point: by the time the publish
-> step runs, the version bump and git tag are already pushed, so
-> blocking at that moment would just leave an orphan tag. The real
-> review point is the PR merge into `dev`, which is handled by normal
-> PR reviews, not by environments. If you later need to restrict
-> which workflows can publish (e.g. because you add another workflow
-> to this repo), you can re-add an environment name to both
-> `release.yml` and the PyPI publisher config.
+### 2. Create the `pypi` environment on GitHub
 
-### 2. (Optional) Protect main
+The release workflow declares `environment: pypi`, which embeds an
+`environment` claim in the OIDC token PyPI uses to verify the
+publish. The environment must exist on GitHub for the workflow to
+run, but **it does not need any protection rules** — leave it empty.
+
+1. Open the repo on GitHub → **Settings** → **Environments** → **New environment**.
+2. Name it `pypi`.
+3. Save without adding any rules.
+
+That's it. No required reviewers, no secrets, no branch restrictions.
+The workflow runs through end-to-end with no manual gates.
+
+> **Why no required reviewers?** A reviewer gate would only fire
+> right before the publish step — but by that point the version bump
+> is already committed and the `vX.Y.Z` tag is already pushed to
+> `main`. Rejecting at that moment would leave an orphan tag with no
+> PyPI artifact behind it, which is worse than just publishing. The
+> meaningful review happens earlier, when PRs land on `dev`. The
+> environment here exists only to scope the OIDC claim, not to gate
+> on humans.
+
+### 3. (Optional) Protect main
 
 If you want to be extra safe:
 
@@ -99,10 +110,9 @@ pushed to `main` directly, reset it back to the last release tag, and
 rerun.
 
 **"Untrusted publisher" from PyPI.** The trusted publisher registration
-doesn't match. Double-check the owner/repo/workflow values on
-<https://pypi.org/manage/account/publishing/> — they must match the
-workflow file exactly. Make sure the **Environment name** field is
-empty on PyPI, because `release.yml` does not set one.
+doesn't match. Double-check the owner/repo/workflow/environment values
+on <https://pypi.org/manage/account/publishing/> — they must match the
+workflow file exactly, including `environment name: pypi`.
 
 **"The requested URL returned error: 403" on push.** `GITHUB_TOKEN`
 doesn't have permission to push to `main`. Either relax branch

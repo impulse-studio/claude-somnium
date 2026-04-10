@@ -41,6 +41,13 @@ jobs:
   release:
     name: Release (${{ inputs.bump }})
     runs-on: ubuntu-latest
+    # The `pypi` environment scopes the OIDC token so PyPI can verify
+    # that this exact workflow + environment is authorized to publish.
+    # No protection rules are attached — there is no manual approval
+    # step, the workflow runs through end-to-end.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/claude-somnium
 
     steps:
       - name: Checkout dev branch
