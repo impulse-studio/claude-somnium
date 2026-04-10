@@ -636,93 +636,95 @@ def _find_latest_transcript() -> Path | None:
 def search(
     query: str = typer.Argument(..., help="Query string."),
     top_k: int = typer.Option(5, "--top-k", "-k", help="Number of hits to return."),
-    scope: str = typer.Option("all", "--scope", "-s", help="global|project|skills|all"),
-    code: bool = typer.Option(False, "--code", "-c", help="Search the code index instead of memories."),
+    scope: str = typer.Option(
+        "all",
+        "--scope",
+        "-s",
+        help="global|project|skills|code|all",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print raw JSON."),
 ) -> None:
-    """Search memories or code from the CLI.
+    """Search memories, skills and code from the CLI.
 
-    By default, searches across global + project memories. Pass --code
-    to search the per-project code index instead (requires a prior
-    `somnium index --code`).
+    Scopes:
+      all      — everything: global + project memories + skills + code
+      global   — global memories + global skills
+      project  — project memories + project skills
+      skills   — global + project skills
+      code     — per-project code index only (needs `somnium index --code`)
     """
     reset_config_cache()
     cfg = get_config()
-
-    if code:
-        _search_code(query, top_k, as_json, cfg)
-    else:
-        _search_memory(query, top_k, scope, as_json, cfg)
-
-
-def _search_memory(
-    query: str, top_k: int, scope: str, as_json: bool, cfg
-) -> None:
     from .embeddings import get_embedder
-    from .storage.scope import normalize_scopes
 
     embedder = get_embedder(cfg)
-    query_vec = embedder.embed_query(query)
-    scopes = normalize_scopes(scope)
+    include_code = scope in ("all", "code")
+    include_memory = scope != "code"
 
-    all_hits = []
-    if cfg.global_index_path.exists():
-        with _global_store() as store:
-            all_hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
-    if cfg.project_index_path and cfg.project_index_path.exists():
-        with VectorStore(cfg.project_index_path) as store:
-            all_hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
+    all_results: list[dict] = []
 
-    all_hits.sort(key=lambda h: h.score, reverse=True)
-    all_hits = all_hits[:top_k]
+    if include_memory:
+        from .storage.scope import normalize_scopes
+
+        query_vec = embedder.embed_query(query)
+        scopes = normalize_scopes(scope if scope != "all" else None)
+
+        if cfg.global_index_path.exists():
+            with _global_store() as store:
+                for h in store.search(query_vec, top_k=top_k, scopes=scopes):
+                    all_results.append({"type": "memory", "hit": h})
+        if cfg.project_index_path and cfg.project_index_path.exists():
+            with VectorStore(cfg.project_index_path) as store:
+                for h in store.search(query_vec, top_k=top_k, scopes=scopes):
+                    all_results.append({"type": "memory", "hit": h})
+
+    if include_code:
+        from .code.semantic import search_code
+
+        code_hits = search_code(query, top_k=top_k, config=cfg)
+        for ch in code_hits:
+            all_results.append({"type": "code", "hit": ch})
+
+        if not code_hits and scope == "code":
+            if not (cfg.project_code_index_path and cfg.project_code_index_path.exists()):
+                console.print(
+                    "[dim]no code hits[/] "
+                    "(run [cyan]somnium index --code[/] first)"
+                )
+                return
+
+    all_results.sort(key=lambda r: r["hit"].score, reverse=True)
+    all_results = all_results[:top_k]
 
     if as_json:
-        typer.echo(json.dumps([h.to_dict() for h in all_hits], indent=2))
-        return
-
-    if not all_hits:
-        console.print("[dim]no memory hits[/]")
-        return
-
-    for i, hit in enumerate(all_hits, 1):
-        console.print(
-            f"\n[bold]{i}.[/] [green]{hit.score:.3f}[/] "
-            f"[dim]{hit.scope}[/] [cyan]{hit.file_path}[/]"
+        typer.echo(
+            json.dumps([r["hit"].to_dict() for r in all_results], indent=2)
         )
-        preview = hit.text[:400].replace("\n", " ")
-        console.print(f"   {preview}{'…' if len(hit.text) > 400 else ''}")
-
-
-def _search_code(query: str, top_k: int, as_json: bool, cfg) -> None:
-    from .code.semantic import search_code
-
-    hits = search_code(query, top_k=top_k, config=cfg)
-
-    if as_json:
-        typer.echo(json.dumps([h.to_dict() for h in hits], indent=2))
         return
 
-    if not hits:
-        console.print(
-            "[dim]no code hits[/]"
-            + (
-                " (run [cyan]somnium index --code[/] first)"
-                if not (cfg.project_code_index_path and cfg.project_code_index_path.exists())
-                else ""
+    if not all_results:
+        console.print("[dim]no hits[/]")
+        return
+
+    for i, r in enumerate(all_results, 1):
+        hit = r["hit"]
+        if r["type"] == "code":
+            filename = hit.file_path.split("/")[-1]
+            lang = f"[{hit.language}] " if hit.language else ""
+            lines = f":{hit.start_line}-{hit.end_line}" if hit.start_line else ""
+            console.print(
+                f"\n[bold]{i}.[/] [green]{hit.score:.3f}[/] "
+                f"[dim]code[/] {lang}[cyan]{filename}{lines}[/]"
             )
-        )
-        return
-
-    for i, hit in enumerate(hits, 1):
-        filename = hit.file_path.split("/")[-1]
-        lang = f"[dim][{hit.language}][/] " if hit.language else ""
-        lines = f":{hit.start_line}-{hit.end_line}" if hit.start_line else ""
-        console.print(
-            f"\n[bold]{i}.[/] [green]{hit.score:.3f}[/] "
-            f"{lang}[cyan]{filename}{lines}[/]"
-        )
-        preview = hit.text.split("\n")[0][:120]
-        console.print(f"   {preview}")
+            preview = hit.text.split("\n")[0][:120]
+            console.print(f"   {preview}")
+        else:
+            console.print(
+                f"\n[bold]{i}.[/] [green]{hit.score:.3f}[/] "
+                f"[dim]{hit.scope}[/] [cyan]{hit.file_path}[/]"
+            )
+            preview = hit.text[:400].replace("\n", " ")
+            console.print(f"   {preview}{'…' if len(hit.text) > 400 else ''}")
 
 
 # ----------------------------------------------------------------------
