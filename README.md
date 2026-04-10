@@ -49,11 +49,27 @@ export VOYAGE_API_KEY=pa-...
 # 3. One-time setup: creates ~/.claude/somnium/, registers the hooks
 #    and the MCP server with Claude Code. You only run this ONCE per machine.
 somnium init
+
+# 4. (Optional, per-project) Turn on semantic code search in a repo.
+#    Memory and the dream loop work without this step — this is only
+#    needed if you want the `code_search_semantic` MCP tool to return
+#    hits when Claude asks things like "where do we handle auth".
+cd my-project
+somnium index --code
 ```
 
-That's the entire setup. Open Claude Code in **any git repo** and Somnium
-detects it automatically — there is no per-project init step.
+Steps 1–3 are the entire setup. Open Claude Code in **any git repo** and
+Somnium detects it automatically — there is no per-project init step.
 Memory, the dream loop, and context injection start working immediately.
+
+Step 4 is opt-in per repo because indexing a codebase costs a few cents
+in Voyage credits and not every project benefits from it. Once you've
+run it for a repo, the PostToolUse hook keeps the index up to date
+automatically as Claude edits files.
+
+Run `somnium status` any time to verify everything is wired up — it
+prints every index, every hook, and the MCP connection state in one
+shot.
 
 ## What you get
 

@@ -126,11 +126,19 @@ def init(
         r"\[embeddings], or export [cyan]VOYAGE_API_KEY[/]."
     )
     console.print(
-        "  2. Drop a few .md notes in "
-        f"[cyan]{cfg.global_memory_dir}[/] and run [bold]somnium index[/]."
+        "  2. Memory and the dream loop work automatically now — open "
+        "Claude Code in any git repo and start a session. Somnium detects "
+        "the project and creates its memory directory on first write."
     )
     console.print(
-        "  3. Check [bold]somnium status[/] to verify everything is wired."
+        "  3. [dim](Optional, per-repo)[/] For semantic code search, "
+        "[cyan]cd[/] into a repo and run [bold]somnium index --code[/]. "
+        "This is only needed if you want the [cyan]code_search_semantic[/] "
+        "MCP tool to return hits — memory and dream mode work without it."
+    )
+    console.print(
+        "  4. Check [bold]somnium status[/] at any time to verify every "
+        "index, hook, and the MCP connection in one shot."
     )
 
 
