@@ -685,8 +685,7 @@ def search(
         for ch in code_hits:
             all_results.append({"type": "code", "hit": ch})
 
-        if not code_hits and scope == "code":
-            if not (cfg.project_code_index_path and cfg.project_code_index_path.exists()):
+        if not code_hits and scope == "code" and not (cfg.project_code_index_path and cfg.project_code_index_path.exists()):
                 console.print(
                     "[dim]no code hits[/] "
                     "(run [cyan]somnium index --code[/] first)"
