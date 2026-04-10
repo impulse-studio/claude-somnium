@@ -184,10 +184,35 @@ def main() -> None:
             f"injected {result['n_hits']} hits, "
             f"{len(result['text'])} chars",
         )
+        _write_state(result["n_hits"], len(result["text"]))
     else:
         log_info(HOOK_NAME, str(result))
+        _write_state(0, 0)
 
     sys.exit(0)
+
+
+def _write_state(n_hits: int, chars: int) -> None:
+    """Write a small JSON file so the status line can show injection stats
+    without parsing the hooks log. Best-effort, non-fatal."""
+    try:
+        import datetime as dt
+
+        state_dir = Path.home() / ".claude" / "somnium" / "state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        state_path = state_dir / "prompt_context.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "n_hits": n_hits,
+                    "chars": chars,
+                    "timestamp": dt.datetime.now().isoformat(),
+                }
+            ),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 if __name__ == "__main__":

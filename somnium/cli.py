@@ -291,13 +291,27 @@ def reindex() -> None:
 
 
 @app.command()
-def status() -> None:
+def status(
+    install_line: bool = typer.Option(
+        False, "--install-line", help="Install the Somnium status line in Claude Code."
+    ),
+    uninstall_line: bool = typer.Option(
+        False, "--uninstall-line", help="Remove the Somnium status line from Claude Code."
+    ),
+) -> None:
     """Show a full health snapshot: indexes, hooks, MCP server, config.
 
     Use this after `somnium init` to verify everything is wired up,
     and any time you want to know what's actually in your indexes
     without running a search.
     """
+    if install_line:
+        _install_statusline()
+        return
+    if uninstall_line:
+        _uninstall_statusline()
+        return
+
     reset_config_cache()
     cfg = get_config()
 
@@ -306,6 +320,7 @@ def status() -> None:
     _print_hooks_status()
     _print_mcp_status()
     _print_config_status(cfg)
+    _print_statusline_tip()
 
 
 def _index_row(
@@ -531,6 +546,82 @@ def _print_config_status(cfg) -> None:
     else:
         console.print("  Project root:   [dim](none — not in a git repo)[/]")
     console.print(f"  Global root:    [cyan]{cfg.global_root}[/]")
+
+
+def _print_statusline_tip() -> None:
+    """Show a Tip about the status line if it's not installed yet."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    has_statusline = False
+    if settings_path.exists():
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+            has_statusline = "statusLine" in data
+        except Exception:
+            pass
+    if not has_statusline:
+        console.print()
+        console.print(
+            "[dim]Tip: add a live status bar to Claude Code with "
+            "[cyan]somnium status --install-line[/][/]"
+        )
+
+
+def _install_statusline() -> None:
+    """Copy the statusline script and register it in settings.json."""
+    from importlib import resources
+
+    # Copy script
+    script_target = Path.home() / ".claude" / "somnium-statusline.sh"
+    with resources.files("somnium.templates").joinpath("statusline.sh").open("rb") as fh:
+        script_target.write_bytes(fh.read())
+    script_target.chmod(0o755)
+    console.print(f"[green]Wrote:[/] [cyan]{script_target}[/]")
+
+    # Update settings.json
+    settings_path = Path.home() / ".claude" / "settings.json"
+    settings: dict = {}
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+
+    settings["statusLine"] = {
+        "type": "command",
+        "command": str(script_target),
+        "refreshInterval": 5,
+    }
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    console.print(
+        "[green]Registered[/] status line in [cyan]~/.claude/settings.json[/]"
+    )
+    console.print(
+        "[dim]The status bar will appear at the bottom of Claude Code "
+        "after your next message.[/]"
+    )
+
+
+def _uninstall_statusline() -> None:
+    """Remove the statusline config and script."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            if "statusLine" in settings:
+                del settings["statusLine"]
+                settings_path.write_text(
+                    json.dumps(settings, indent=2) + "\n", encoding="utf-8"
+                )
+                console.print("[green]Removed[/] statusLine from settings.json")
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]Failed to update settings.json:[/] {exc}")
+
+    script_path = Path.home() / ".claude" / "somnium-statusline.sh"
+    if script_path.exists():
+        script_path.unlink()
+        console.print(f"[green]Deleted:[/] {script_path}")
+
+    console.print("[dim]Status line removed.[/]")
 
 
 # ----------------------------------------------------------------------
