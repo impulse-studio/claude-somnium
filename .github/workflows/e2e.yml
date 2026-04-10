@@ -1,0 +1,80 @@
+name: E2E
+
+# Runs real LLM calls (Claude + Voyage) in a sandboxed temp project.
+# NOT gating — these tests cost ~$0.20 per run and may fail on
+# transient API issues. Regular CI (ci.yml) is the merge gate.
+#
+# Trigger:
+#   - Automatically on push to dev or main.
+#   - Manually via workflow_dispatch on any branch (for PR testing).
+#
+# Secrets required:
+#   - ANTHROPIC_API_KEY — for `claude -p` (the dream agent).
+#   - VOYAGE_API_KEY   — for embeddings (memory + code search).
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  e2e:
+    name: E2E (live APIs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Somnium
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run E2E tests
+        run: |
+          pytest tests/e2e/ \
+            -v \
+            --junitxml=reports/e2e-junit.xml \
+            --timeout=120
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          # Isolate somnium state to a temp dir so the runner's home
+          # isn't polluted across runs.
+          SOMNIUM_HOME: ${{ runner.temp }}/somnium-e2e
+
+      - name: Upload E2E reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-reports
+          path: reports/
+          retention-days: 30
+
+      - name: Annotate PR with E2E results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: E2E tests (live APIs)
+          path: reports/e2e-junit.xml
+          reporter: java-junit
+          fail-on-error: false   # non-blocking — API transients happen

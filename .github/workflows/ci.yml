@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  checks: write       # needed by dorny/test-reporter to annotate PRs
+
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -37,5 +41,32 @@ jobs:
       - name: Ruff lint
         run: ruff check somnium tests
 
-      - name: Pytest
-        run: pytest -q
+      - name: Pytest with JUnit XML + coverage
+        run: |
+          pytest \
+            --ignore=tests/e2e \
+            --junitxml=reports/junit.xml \
+            --cov=somnium \
+            --cov-report=term \
+            --cov-report=html:reports/coverage-html \
+            -q
+        env:
+          # Ensure no real API key leaks into unit tests.
+          VOYAGE_API_KEY: ""
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-py${{ matrix.python-version }}
+          path: reports/
+          retention-days: 30
+
+      - name: Annotate PR with test results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Unit tests (Python ${{ matrix.python-version }})
+          path: reports/junit.xml
+          reporter: java-junit
+          fail-on-error: true
