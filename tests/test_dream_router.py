@@ -121,7 +121,9 @@ def test_dispatch_project_memory_without_project_is_skipped(tmp_path, monkeypatc
     assert "project" in records[0].reason.lower()
 
 
-def test_dispatch_global_skill(sandbox_cfg):
+def test_dispatch_global_skill_is_rejected(sandbox_cfg):
+    """global_skill is no longer supported. If the dream agent emits
+    one anyway, the router skips it with a clear reason."""
     items = [
         {
             "category": "global_skill",
@@ -131,12 +133,30 @@ def test_dispatch_global_skill(sandbox_cfg):
         }
     ]
     records = dispatch(items, sandbox_cfg)
+    assert records[0].status == "skipped"
+    assert "global_skill not supported" in records[0].reason
+
+
+def test_dispatch_project_skill(sandbox_cfg):
+    items = [
+        {
+            "category": "project_skill",
+            "title": "Add API endpoint",
+            "content": "Steps:\n1. Add route\n2. Register handler\n3. Run tests",
+            "rationale": "reusable in this repo",
+        }
+    ]
+    records = dispatch(items, sandbox_cfg)
     assert records[0].status == "written"
     skill_path = Path(records[0].path)
     assert skill_path.name == "SKILL.md"
-    assert skill_path.parent.parent == sandbox_cfg.global_skills_dir
+    # Lives under <repo>/.claude/skills/<slug>/
+    assert (
+        skill_path.parent.parent
+        == sandbox_cfg.project_root / ".claude" / "skills"
+    )
     content = skill_path.read_text()
-    assert "name: PR review flow" in content
+    assert "name: Add API endpoint" in content
 
 
 def test_dispatch_claude_md_patch(sandbox_cfg):

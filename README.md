@@ -39,16 +39,21 @@ sequenceDiagram
 ## Quick start
 
 ```bash
+# 1. Install the CLI.
 pipx install claude-somnium
 
-export VOYAGE_API_KEY=pa-...    # https://voyageai.com (free tier OK)
+# 2. Drop your Voyage AI key in the env (or in ~/.claude/somnium/config.toml later).
+#    Free tier at https://voyageai.com is plenty.
+export VOYAGE_API_KEY=pa-...
 
-somnium init                    # global setup + register hooks + MCP server
-cd my-project && somnium init --project   # opt this repo into project memory
-somnium index --code            # (optional) build a semantic index of the repo
+# 3. One-time setup: creates ~/.claude/somnium/, registers the hooks
+#    and the MCP server with Claude Code. You only run this ONCE per machine.
+somnium init
 ```
 
-That's it. Open Claude Code anywhere and the memory + dream loop runs automatically.
+That's the entire setup. Open Claude Code in **any git repo** and Somnium
+detects it automatically — there is no per-project init step.
+Memory, the dream loop, and context injection start working immediately.
 
 ## What you get
 
@@ -65,6 +70,15 @@ That's it. Open Claude Code anywhere and the memory + dream loop runs automatica
 - **Semantic code search.** Per-project index built on demand with
   `voyage-code-3`. Exposed as the `code_search_semantic` MCP tool so
   Claude can use it instead of grepping blindly.
+- **Auto-generated project skills.** When the dream agent spots a
+  procedural pattern that's specific to a project ("how to add an API
+  endpoint here"), it writes a real Claude Code `SKILL.md` into
+  `<repo>/.claude/skills/`. You then invoke it in future sessions with
+  `/<slug>` like any other skill.
+- **In-place updates, never duplicates.** Memories and skills are
+  named by slug only. The next time the dream agent extracts a fact
+  about an existing topic, it rewrites the same file rather than
+  creating `foo-2.md`, `foo-3.md`, etc.
 
 ## Example: a typical session
 
@@ -81,12 +95,14 @@ and dispatches a background sub-agent. ~20 seconds and ~$0.10 later:
 
 ```
 my-project/
-├── CLAUDE.md                           # ← one-line patch appended
+├── CLAUDE.md                                   # ← one-line patch appended
 └── .claude/somnium/memory/
-    └── 2026-04-10-react-component-layout.md   # ← new file
+    └── react-component-layout.md               # ← new file
 ```
 
-Both are real files you can `git diff`, accept, or revert.
+Both are real files you can `git diff`, accept, or revert. Next time
+the dream agent picks up the same topic, it overwrites
+`react-component-layout.md` in place rather than creating a duplicate.
 
 A week later you start a new session in that repo and type *"add a Modal
 component"*. Before Claude sees the prompt, the `UserPromptSubmit` hook
@@ -113,6 +129,20 @@ The dream agent decides which scope each new memory belongs to based on
 language cues (*"always"* vs *"in this project"*). Both scopes are
 queried together at search time.
 
+## Project detection
+
+Somnium considers any directory containing a `.git` folder (or a
+pre-existing `.claude/somnium/` marker) as a Somnium project. There is
+no separate "register this project" step — Claude Code is launched in
+a git repo, the hooks fire, and Somnium creates
+`<repo>/.claude/somnium/memory/` lazily on the first write.
+
+If you want to override config per-project (different dream model,
+different ignore list, disable a phase, …), drop a
+`<repo>/.claude/somnium/project.toml` by hand or run `somnium init --project`
+inside the repo to scaffold a commented template. Otherwise you never
+need to think about it.
+
 ## CLI reference
 
 ```
@@ -135,6 +165,9 @@ Deeper guides for each subsystem live in [`docs/`](docs/):
   semantic code index, ignore rules, incremental updates.
 - [**Configuration**](docs/configuration.md) — every key in
   `config.toml`, per-project overrides, env vars.
+- [**Skills**](docs/skills.md) — how Somnium creates and updates
+  Claude Code skills automatically, why there are no global skills,
+  and how to invoke them.
 - [**Architecture**](docs/architecture.md) — the package layout for
   contributors, plus how the hooks fit together.
 - [**Releasing**](docs/releasing.md) — how the `Release` GitHub

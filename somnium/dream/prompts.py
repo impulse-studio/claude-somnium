@@ -6,6 +6,13 @@ import json
 
 # JSON schema enforced via `claude -p --json-schema`. Matches the
 # categories our router knows how to dispatch.
+#
+# Note: `global_skill` is intentionally NOT in this enum. Skills only
+# make sense scoped to a project — a global skill in `~/.claude/skills/`
+# is invisible to Claude when working inside a repo (it doesn't
+# auto-load) and clutters the global namespace. If a procedural pattern
+# is generic enough to apply everywhere, it should land in
+# `global_memory` instead so it surfaces via the memory_search tool.
 DREAM_OUTPUT_SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
@@ -32,7 +39,6 @@ DREAM_OUTPUT_SCHEMA: dict = {
                         "enum": [
                             "global_memory",
                             "project_memory",
-                            "global_skill",
                             "project_skill",
                             "claude_md_patch",
                         ],
@@ -70,7 +76,7 @@ remembering across future sessions.
 You produce a structured JSON output. Do not chat. Do not ask questions.
 Do not use any tools. Just emit the JSON.
 
-## Categories
+## Categories — there are exactly four
 
 - **global_memory**: A fact or preference that is true across ALL
   projects the user works on. Example: "User always uses Graphite (gt)
@@ -83,13 +89,14 @@ Do not use any tools. Just emit the JSON.
   `src/features/<feature>/components/`." These go in
   `<repo>/.claude/somnium/memory/`.
 
-- **global_skill**: A procedural "how to do X" that is reusable across
-  projects and worth exposing as a Claude Code skill. Example: "How to
-  review a PR with emphasis on security." Format as a skill with
-  triggers and steps.
-
-- **project_skill**: Same as global_skill but specific to the current
-  project.
+- **project_skill**: A procedural "how to do X" that's specific to
+  this project and worth exposing as a Claude Code skill (so the user
+  can invoke it via `/<slug>` in future sessions). Example: "How to
+  add a new API endpoint in this repo — copy the template, register
+  the route, add a fixture, run the schema check." These go in
+  `<repo>/.claude/skills/<slug>/SKILL.md`. Note: there is **no**
+  `global_skill` category — generic procedural knowledge belongs in
+  `global_memory` so the memory_search tool can surface it.
 
 - **claude_md_patch**: A concise addition to the project's CLAUDE.md
   file. Use this only for constraints or workflows that should shape
@@ -121,20 +128,47 @@ Do not use any tools. Just emit the JSON.
 - If nothing is worth persisting, return `should_persist: false`
   with an empty items array.
 
-## CRITICAL: Reuse titles to update existing memories
+## CRITICAL: prefer updating existing items over creating new ones
 
-The session context below lists memories that already exist. **If the
-fact you want to record overlaps with one of them, REUSE THE EXACT
-TITLE of the existing memory.** Same title = same filename = the
-existing file gets overwritten with your improved version.
+The session context below lists every memory and skill that already
+exists. **Your default action is to UPDATE one of those, not to
+create a new file.** Same title = same filename = the existing file
+is rewritten with your improved version. That is the entire point.
 
-Do NOT invent a new title for a concept that's already covered.
-Do NOT pluralize, rephrase, or "make it clearer" — match the title
-character-for-character. The whole point is to update in place rather
-than accumulate near-duplicates.
+For each fact you want to record, before emitting an item, scan the
+existing list and ask:
 
-Only invent a new title when the fact is genuinely new and unrelated
-to anything in the existing list.
+1. Is there a memory / skill whose topic overlaps with this fact?
+   → REUSE its title character-for-character. The new content
+     replaces the old content. The dedup is name-based, so even one
+     character of difference in the title creates a duplicate file.
+2. Does an existing item *partially* cover this fact?
+   → Still reuse its title. Your `content` field should be the
+     CONSOLIDATED version (old facts + new facts), not just the new
+     bit. The old file will be overwritten by what you emit.
+3. Is the fact genuinely new and unrelated to anything in the list?
+   → Only then invent a new title.
+
+Concrete examples:
+
+- Existing memory titled "Somnium project identity and architecture"
+  contains a GitHub URL. The user just renamed the repo. → Emit a
+  new item with title `"Somnium project identity and architecture"`
+  (verbatim) and the full updated content (including the new URL +
+  every other fact you remember from the existing memory). DO NOT
+  create a new memory called "Somnium GitHub repo renamed".
+
+- Existing skill `add-api-endpoint` describes a 4-step procedure.
+  The user added a 5th step today. → Emit a `project_skill` with
+  title that slugifies back to `"add-api-endpoint"` (e.g. "Add API
+  endpoint") and the full 5-step procedure. DO NOT create
+  `add-api-endpoint-v2`.
+
+- Yesterday: memory "Type hints required". Today the user mentions
+  type hints again with no new info. → Don't emit anything for it.
+
+NEVER pluralize, rephrase, or "make titles clearer". Character-for-
+character match is the only thing that triggers an update.
 """
 
 

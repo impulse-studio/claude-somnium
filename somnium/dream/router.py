@@ -262,14 +262,19 @@ def dispatch(
                 )
 
             elif category == "global_skill":
-                path = _write_skill(
-                    skills_dir=config.global_skills_dir,
-                    title=title,
-                    content=content,
-                )
-                _reindex_file(path, "skill_global", config)
+                # global_skill is no longer a supported category. Skills
+                # only make sense scoped to a project — generic
+                # procedural knowledge belongs in global_memory instead.
+                # If the dream agent emits one despite the schema, we
+                # downgrade it to a skipped record with a clear reason.
                 records.append(
-                    WriteRecord(category, title, str(path), "written")
+                    WriteRecord(
+                        category=category,
+                        title=title,
+                        path="",
+                        status="skipped",
+                        reason="global_skill not supported — use global_memory instead",
+                    )
                 )
 
             elif category == "project_skill":
