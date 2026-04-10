@@ -44,11 +44,44 @@ class DreamResult:
     exit_code: int = 0
 
 
-def _collect_existing_files(directory: Path, limit: int = 50) -> list[str]:
+def _collect_existing_titles(directory: Path, limit: int = 50) -> list[str]:
+    """Return the human-readable title of each .md memory in `directory`.
+
+    Title resolution order:
+      1. The first H1 (`# Title`) in the file body
+      2. The `title` field in YAML frontmatter
+      3. The slugified filename, as a last resort
+
+    Falling back to titles (rather than filenames) gives the dream
+    agent something it can match character-for-character when deciding
+    whether to update an existing memory rather than create a duplicate.
+    """
+    import re
+
+    import frontmatter as fm
+
     if not directory.exists():
         return []
-    files = sorted(p.name for p in directory.glob("*.md") if p.is_file())
-    return files[:limit]
+
+    titles: list[str] = []
+    for path in sorted(directory.glob("*.md")):
+        if not path.is_file():
+            continue
+        try:
+            post = fm.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            titles.append(path.stem)
+            continue
+
+        h1 = re.search(r"^#\s+(.+?)\s*$", post.content or "", re.M)
+        if h1:
+            titles.append(h1.group(1).strip())
+        elif post.metadata.get("title"):
+            titles.append(str(post.metadata["title"]))
+        else:
+            titles.append(path.stem)
+
+    return titles[:limit]
 
 
 def _collect_skill_names(directory: Path, limit: int = 50) -> list[str]:
@@ -65,9 +98,9 @@ def build_prompt_for(transcript: Transcript, config: SomniumConfig) -> str:
     """Assemble the full user prompt for the dream agent."""
     project_root = str(config.project_root) if config.project_root else None
 
-    global_mem = _collect_existing_files(config.global_memory_dir)
+    global_mem = _collect_existing_titles(config.global_memory_dir)
     project_mem = (
-        _collect_existing_files(config.project_memory_dir)
+        _collect_existing_titles(config.project_memory_dir)
         if config.project_memory_dir
         else []
     )
@@ -79,8 +112,8 @@ def build_prompt_for(transcript: Transcript, config: SomniumConfig) -> str:
     return prompts.build_user_prompt(
         transcript_markdown=transcript.as_markdown(),
         project_root=project_root,
-        global_memory_files=global_mem,
-        project_memory_files=project_mem,
+        global_memory_titles=global_mem,
+        project_memory_titles=project_mem,
         existing_skills=skills,
     )
 

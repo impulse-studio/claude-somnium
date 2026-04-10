@@ -74,12 +74,16 @@ def test_dispatch_global_memory(sandbox_cfg):
     assert len(records) == 1
     r = records[0]
     assert r.status == "written"
-    assert Path(r.path).exists()
-    assert Path(r.path).is_relative_to(sandbox_cfg.global_memory_dir)
-    content = Path(r.path).read_text()
+    target = Path(r.path)
+    assert target.exists()
+    assert target.is_relative_to(sandbox_cfg.global_memory_dir)
+    # Filename is the slug only — no date prefix.
+    assert target.name == "graphite-push.md"
+    content = target.read_text()
     assert "Graphite push" in content
     assert "gt submit" in content
     assert "tags:" in content
+    assert "updated_at:" in content
 
 
 def test_dispatch_project_memory_without_project_is_skipped(tmp_path, monkeypatch):
@@ -171,17 +175,54 @@ def test_dispatch_missing_fields(sandbox_cfg):
     assert "missing" in records[0].reason
 
 
-def test_dispatch_filename_collision(sandbox_cfg):
+def test_dispatch_same_title_overwrites_in_place(sandbox_cfg):
+    """Two items with the same title must produce ONE file. The second
+    write overwrites the first — that's the dedup contract."""
     item = {
         "category": "global_memory",
         "title": "Same title",
-        "content": "first",
+        "content": "first version",
         "rationale": "r",
     }
-    records = dispatch([item, dict(item, content="second")], sandbox_cfg)
+    records = dispatch([item, dict(item, content="second version")], sandbox_cfg)
     assert records[0].status == "written"
     assert records[1].status == "written"
-    assert records[0].path != records[1].path
+    # Same path both times
+    assert records[0].path == records[1].path
+    # Only one file on disk
+    files = list(sandbox_cfg.global_memory_dir.glob("*.md"))
+    assert len(files) == 1
+    # Second write won
+    body = files[0].read_text()
+    assert "second version" in body
+    assert "first version" not in body
+
+
+def test_dispatch_overwrite_preserves_created_at(sandbox_cfg):
+    """When overwriting an existing memory, the original `created_at`
+    must survive — only `updated_at` advances."""
+    item = {
+        "category": "global_memory",
+        "title": "Persistent rule",
+        "content": "v1",
+        "rationale": "r",
+    }
+    records1 = dispatch([item], sandbox_cfg)
+    first_path = Path(records1[0].path)
+    first_text = first_path.read_text()
+    first_created = next(
+        line for line in first_text.splitlines() if line.startswith("created_at:")
+    )
+
+    # Sleep is unnecessary — just dispatch a second time with new content.
+    dispatch([dict(item, content="v2")], sandbox_cfg)
+    second_text = first_path.read_text()
+    second_created = next(
+        line for line in second_text.splitlines() if line.startswith("created_at:")
+    )
+    assert first_created == second_created
+    assert "v2" in second_text
+    assert "v1" not in second_text
 
 
 def test_dispatch_claude_md_patch_appends_to_existing(sandbox_cfg):

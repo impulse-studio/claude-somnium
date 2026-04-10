@@ -18,6 +18,7 @@ import datetime as dt
 import json
 import re
 
+import frontmatter
 from mcp.server.fastmcp import FastMCP
 
 from .config import SomniumConfig, get_config
@@ -135,19 +136,29 @@ def memory_write(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     now = dt.datetime.now()
-    date_stamp = now.strftime("%Y-%m-%d")
-    slug_base = _slugify(title or content.splitlines()[0] if content.strip() else "memory")
-    filename = f"{date_stamp}-{slug_base}.md"
-    target_path = target_dir / filename
-    # Avoid collisions
-    counter = 1
-    while target_path.exists():
-        target_path = target_dir / f"{date_stamp}-{slug_base}-{counter}.md"
-        counter += 1
+    slug_base = _slugify(title or (content.splitlines()[0] if content.strip() else "memory"))
+    target_path = target_dir / f"{slug_base}.md"
+
+    # Preserve original `created_at` if the file already exists, so we
+    # can update memories in place rather than always creating new ones.
+    # PyYAML deserializes date-shaped strings into datetime objects, so
+    # we re-serialize via isoformat() for a stable round-trip.
+    created_at = now.isoformat()
+    if target_path.exists():
+        try:
+            existing = frontmatter.loads(target_path.read_text(encoding="utf-8"))
+            existing_value = existing.metadata.get("created_at")
+            if isinstance(existing_value, dt.datetime | dt.date):
+                created_at = existing_value.isoformat()
+            elif existing_value is not None:
+                created_at = str(existing_value)
+        except Exception:
+            pass
 
     fm_lines = [
         "---",
-        f"created_at: {now.isoformat()}",
+        f"created_at: {created_at}",
+        f"updated_at: {now.isoformat()}",
         f"scope: {scope_key}",
     ]
     if tags:

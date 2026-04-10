@@ -32,12 +32,12 @@ the strongest signal.
   an optional Haiku call when the heuristic is ambiguous (long session,
   no file writes — discussion or Q&A?). Bypassed by default to keep
   cost predictable.
-- **Skill update detection.** The router currently always creates a
-  new `SKILL.md` on collision. It should detect when an existing skill
-  is conceptually the same and propose an edit instead.
-- **Memory deduplication.** Same idea for memory files: when the dream
-  agent tries to save something already covered by an existing memory,
-  edit the existing file rather than create a duplicate.
+- **Smarter dedup beyond exact title match.** Memory and skill writes
+  already overwrite in place when the dream agent emits the same
+  title, and the dream prompt instructs it to reuse existing titles.
+  Next step: a similarity check on titles (Levenshtein or embedding
+  cosine) so trivially-different phrasings (`Type hints required` vs
+  `Type hints are mandatory`) collapse onto one file.
 - **Cost cap per session.** Hard limit how much a single dream run can
   spend, with a config knob. Fail gracefully if the cap is hit.
 - **Dream summaries.** Once a week, run a "deep dream" that condenses

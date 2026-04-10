@@ -120,6 +120,21 @@ Do not use any tools. Just emit the JSON.
   line with the user's stated reason if any.
 - If nothing is worth persisting, return `should_persist: false`
   with an empty items array.
+
+## CRITICAL: Reuse titles to update existing memories
+
+The session context below lists memories that already exist. **If the
+fact you want to record overlaps with one of them, REUSE THE EXACT
+TITLE of the existing memory.** Same title = same filename = the
+existing file gets overwritten with your improved version.
+
+Do NOT invent a new title for a concept that's already covered.
+Do NOT pluralize, rephrase, or "make it clearer" — match the title
+character-for-character. The whole point is to update in place rather
+than accumulate near-duplicates.
+
+Only invent a new title when the fact is genuinely new and unrelated
+to anything in the existing list.
 """
 
 
@@ -127,18 +142,23 @@ def build_user_prompt(
     *,
     transcript_markdown: str,
     project_root: str | None,
-    global_memory_files: list[str],
-    project_memory_files: list[str],
+    global_memory_titles: list[str],
+    project_memory_titles: list[str],
     existing_skills: list[str],
 ) -> str:
-    """Render the user prompt that accompanies the transcript."""
+    """Render the user prompt that accompanies the transcript.
+
+    The memory lists are titles (not filenames) so the dream agent can
+    match them character-for-character when deciding whether to update
+    an existing memory rather than create a duplicate.
+    """
     project_line = project_root or "(no project — general session)"
 
-    def _fmt_list(items: list[str], max: int = 15) -> str:
+    def _fmt_titles(items: list[str], max: int = 30) -> str:
         if not items:
             return "  (none)"
         shown = items[:max]
-        out = "\n".join(f"  - {item}" for item in shown)
+        out = "\n".join(f'  - "{item}"' for item in shown)
         if len(items) > max:
             out += f"\n  - … and {len(items) - max} more"
         return out
@@ -147,12 +167,16 @@ def build_user_prompt(
 # Session context
 
 - Project root: {project_line}
-- Existing global memories:
-{_fmt_list(global_memory_files)}
-- Existing project memories:
-{_fmt_list(project_memory_files)}
+
+- Existing global memory titles (REUSE these character-for-character
+  if your fact overlaps — that overwrites the file in place):
+{_fmt_titles(global_memory_titles)}
+
+- Existing project memory titles (same rule — reuse to update):
+{_fmt_titles(project_memory_titles)}
+
 - Existing skills:
-{_fmt_list(existing_skills)}
+{_fmt_titles(existing_skills)}
 
 # Transcript
 
