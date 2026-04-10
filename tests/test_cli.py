@@ -41,10 +41,17 @@ def runner() -> CliRunner:
 
 @pytest.fixture
 def cli_sandbox(tmp_path, monkeypatch):
-    """Isolate everything: SOMNIUM_HOME, HOME, embedder, MCP install."""
+    """Isolate everything: cwd, HOME, SOMNIUM_HOME, embedder, MCP install."""
     home = tmp_path / "home"
     home.mkdir()
     somnium_home = home / ".claude" / "somnium"
+
+    # `find_project_root` walks upwards from `Path.cwd()`, so we must
+    # also pin the working directory to the sandbox or tests will pick
+    # up the real dev repo as the "project root".
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
 
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SOMNIUM_HOME", str(somnium_home))
@@ -149,15 +156,58 @@ def test_status_runs_after_init(runner, cli_sandbox):
     runner.invoke(app, ["init"])
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
-    assert "global" in result.stdout
-    assert "Voyage" in result.stdout
-    assert "Dream mode" in result.stdout
+    # Each section header is shown
+    assert "Memory indexes" in result.stdout
+    assert "Code index" in result.stdout
+    assert "Hooks" in result.stdout
+    assert "MCP server" in result.stdout
+    assert "Configuration" in result.stdout
 
 
 def test_status_reports_voyage_key_set(runner, cli_sandbox):
     runner.invoke(app, ["init"])
     result = runner.invoke(app, ["status"])
     assert "set" in result.stdout
+    assert "Voyage" in result.stdout
+
+
+def test_status_lists_each_hook_with_path(runner, cli_sandbox):
+    """The Hooks section must show every event Somnium installs, with
+    the absolute command path next to each."""
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["status"])
+    for event in ("PostToolUse", "Stop", "UserPromptSubmit"):
+        assert event in result.stdout
+    # The fake _resolve_bin returns /fake/path/<bin>, so that prefix
+    # should appear in the hooks section.
+    assert "/fake/path/somnium-hook" in result.stdout
+
+
+def test_status_explains_when_indexes_are_updated(runner, cli_sandbox):
+    """The status output documents the indexing lifecycle inline."""
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["status"])
+    assert "PostToolUse hook" in result.stdout
+    assert "dream agent" in result.stdout or "dream" in result.stdout
+
+
+def test_status_warns_when_code_index_not_built(runner, cli_sandbox):
+    """A fresh project hasn't run `somnium index --code` yet — the
+    status should say so explicitly with the command to run."""
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["status"])
+    # The code index section should show "not built" or the command hint.
+    # In our sandbox there's no project root, so the section says
+    # "no project detected" instead. Either is acceptable.
+    assert ("not built" in result.stdout) or ("no project" in result.stdout)
+
+
+def test_status_no_emojis_in_section_headers(runner, cli_sandbox):
+    """We use plain text section dividers, not emojis."""
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["status"])
+    for emoji in ("🧠", "📦", "🪝", "🔌", "⚙️"):
+        assert emoji not in result.stdout
 
 
 # ---------------------------------------------------------------------------

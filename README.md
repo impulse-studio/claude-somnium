@@ -129,6 +129,62 @@ The dream agent decides which scope each new memory belongs to based on
 language cues (*"always"* vs *"in this project"*). Both scopes are
 queried together at search time.
 
+## Indexing — when does each index update
+
+Somnium maintains **two separate indexes** with different lifecycles.
+You almost never have to think about either one, but it's worth
+knowing what's happening behind the scenes.
+
+### Memory index — built and updated automatically
+
+Stored at `~/.claude/somnium/index.duckdb` (global) and
+`<repo>/.claude/somnium/index.duckdb` (project). Updated by:
+
+| Trigger | What happens |
+|---|---|
+| `somnium index` | Full walk of every memory dir, embeds changed files. Manual / one-time. |
+| Dream agent (after a Stop hook) | New memories the agent writes are indexed inline before the digest is finalized. |
+| `PostToolUse` hook | When Claude writes or edits a `.md` file inside a memory dir, only that file is reindexed. Hash-based, so an unchanged file is a no-op. |
+| `memory_write` MCP tool | When Claude calls `memory_write` mid-session, the new file is reindexed inline. |
+
+You almost never need to call `somnium index` by hand — it's a recovery
+tool for when you blow away the DuckDB file or edit `.md` files
+outside Claude.
+
+### Code index — built on demand, opt-in per project
+
+Stored at `<repo>/.claude/somnium/code-index.duckdb`. The code index
+is **only built if you ask for it** — there's no auto-creation, because
+embedding a whole codebase costs a few cents per repo and not every
+project benefits from semantic code search.
+
+| Trigger | What happens |
+|---|---|
+| `somnium index --code` | Full repo walk. Chunks every source file (line groups, ~40 lines), embeds with `voyage-code-3`, writes to the per-project DuckDB. |
+| `PostToolUse` hook | When Claude writes or edits a source file, that single file is reincremental-reindexed. Only fires if the index already exists. |
+
+If `code_search_semantic` returns an empty list, that's because the
+index hasn't been built. Run `somnium index --code` once and Claude
+can search code semantically from that point on.
+
+### Verifying everything is wired up
+
+`somnium status` is the doctor command. It shows, in order:
+
+- **Memory indexes** — file/chunk counts for global and project
+- **Code index** — same for per-project code, with a "not built" hint
+  if you haven't run `somnium index --code` yet
+- **Hooks** — every Somnium hook registered in `~/.claude/settings.json`
+  with the absolute command path next to each
+- **MCP server** — registration status from `claude mcp get somnium`
+  (`✓ Connected` if Claude Code can talk to it), the command path,
+  and the list of tools exposed
+- **Configuration** — Voyage key state, dream model, project root,
+  global root
+
+Run it after `somnium init` to verify the install, or any time you
+want to know what Somnium knows about.
+
 ## Project detection
 
 Somnium considers any directory containing a `.git` folder (or a

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from importlib import resources
 from pathlib import Path
 
@@ -281,62 +282,245 @@ def reindex() -> None:
 
 @app.command()
 def status() -> None:
-    """Show index health and counts."""
+    """Show a full health snapshot: indexes, hooks, MCP server, config.
+
+    Use this after `somnium init` to verify everything is wired up,
+    and any time you want to know what's actually in your indexes
+    without running a search.
+    """
     reset_config_cache()
     cfg = get_config()
 
-    table = Table(title="Somnium status", show_header=True, header_style="bold")
+    _print_memory_indexes(cfg)
+    _print_code_index(cfg)
+    _print_hooks_status()
+    _print_mcp_status()
+    _print_config_status(cfg)
+
+
+def _index_row(
+    label: str, path: Path | None, missing_msg: str = "(not built)"
+) -> tuple[str, str, str, str, str]:
+    """Build one row for the indexes table."""
+    if path is None:
+        return (label, missing_msg, "-", "-", "-")
+    if not path.exists():
+        return (label, str(path), "-", "-", "-")
+    with VectorStore(path) as store:
+        s = store.stats()
+        return (
+            label,
+            str(path),
+            str(s["files"]),
+            str(s["chunks"]),
+            str(s["embedding_dim"]),
+        )
+
+
+def _print_memory_indexes(cfg) -> None:
+    """Memories — global + project, both auto-updated by hooks."""
+    console.rule("[bold]Memory indexes[/]")
+    table = Table(show_header=True, header_style="bold")
     table.add_column("Scope")
     table.add_column("Index path", overflow="fold")
     table.add_column("Files", justify="right")
     table.add_column("Chunks", justify="right")
     table.add_column("Dim", justify="right")
 
-    if cfg.global_index_path.exists():
-        with _global_store() as store:
-            s = store.stats()
-            table.add_row(
-                "global",
-                str(cfg.global_index_path),
-                str(s["files"]),
-                str(s["chunks"]),
-                str(s["embedding_dim"]),
-            )
-    else:
-        table.add_row("global", str(cfg.global_index_path), "-", "-", "-")
-
+    table.add_row(*_index_row("global", cfg.global_index_path))
     if cfg.project_index_path:
-        if cfg.project_index_path.exists():
-            with VectorStore(cfg.project_index_path) as store:
-                s = store.stats()
-                table.add_row(
-                    "project",
-                    str(cfg.project_index_path),
-                    str(s["files"]),
-                    str(s["chunks"]),
-                    str(s["embedding_dim"]),
-                )
-        else:
-            table.add_row(
-                "project", str(cfg.project_index_path), "-", "-", "-"
-            )
+        table.add_row(*_index_row("project", cfg.project_index_path))
     else:
         table.add_row("project", "(no project detected)", "-", "-", "-")
 
     console.print(table)
+    console.print(
+        "[dim]Updated by: PostToolUse hook (on Write/Edit) + dream agent "
+        "(after Stop) + manual `somnium index`.[/]"
+    )
 
+
+def _print_code_index(cfg) -> None:
+    """Code semantic search — per-project, opt-in."""
+    console.rule("[bold]Code index[/]")
+    if cfg.project_code_index_path is None:
+        console.print("[dim](no project detected — no code index)[/]")
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Index path", overflow="fold")
+    table.add_column("Files", justify="right")
+    table.add_column("Chunks", justify="right")
+
+    if not cfg.project_code_index_path.exists():
+        table.add_row(
+            str(cfg.project_code_index_path),
+            "[dim]not built[/]",
+            "[dim]not built[/]",
+        )
+        console.print(table)
+        console.print(
+            "[yellow]Run [cyan]somnium index --code[/] in this repo to build it.[/]"
+        )
+        return
+
+    with VectorStore(cfg.project_code_index_path) as store:
+        s = store.stats()
+        table.add_row(
+            str(cfg.project_code_index_path),
+            str(s["files"]),
+            str(s["chunks"]),
+        )
+    console.print(table)
+    console.print(
+        "[dim]Updated by: PostToolUse hook (incremental, when Claude edits "
+        "a source file) + manual `somnium index --code` (full rebuild).[/]"
+    )
+
+
+def _read_somnium_hooks_from_settings() -> dict[str, str]:
+    """Return {event: command_path} for every Somnium-marked hook in
+    ~/.claude/settings.json. Empty dict if the file is missing or has
+    no Somnium entries."""
+    settings_path = Path.home() / ".claude" / "settings.json"
+    if not settings_path.exists():
+        return {}
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    result: dict[str, str] = {}
+    for event, groups in (data.get("hooks") or {}).items():
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            if not group.get("_somnium"):
+                continue
+            inner = group.get("hooks") or []
+            if inner and isinstance(inner[0], dict):
+                cmd = inner[0].get("command")
+                if isinstance(cmd, str):
+                    result[event] = cmd
+    return result
+
+
+def _print_hooks_status() -> None:
+    console.rule("[bold]Hooks[/]")
+    expected = ["PostToolUse", "Stop", "UserPromptSubmit"]
+    installed = _read_somnium_hooks_from_settings()
+
+    if not installed:
+        console.print(
+            "[red]No Somnium hooks found in ~/.claude/settings.json[/]"
+        )
+        console.print(
+            "[yellow]Run [cyan]somnium init[/] to register them.[/]"
+        )
+        return
+
+    for event in expected:
+        cmd = installed.get(event)
+        if cmd:
+            console.print(f"  [green]✓[/] {event:<20} [dim]→ {cmd}[/]")
+        else:
+            console.print(f"  [red]✗[/] {event:<20} [red]not registered[/]")
+
+
+def _check_mcp_server() -> dict[str, str | None]:
+    """Query `claude mcp get somnium` and return a small status dict.
+
+    Keys: registered (bool), command (str|None), connected (bool|None).
+    Returns {"registered": False} if the claude CLI isn't on PATH.
+    """
+    if shutil.which("claude") is None:
+        return {"registered": False, "claude_cli": False}
+    try:
+        proc = subprocess.run(
+            ["claude", "mcp", "get", "somnium"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {"registered": False, "claude_cli": True}
+
+    if proc.returncode != 0:
+        return {"registered": False, "claude_cli": True}
+
+    out = proc.stdout
+    command = None
+    connected = None
+    for line in out.splitlines():
+        line_stripped = line.strip()
+        if line_stripped.startswith("Command:"):
+            command = line_stripped.split(":", 1)[1].strip()
+        elif line_stripped.startswith("Status:"):
+            connected = "Connected" in line_stripped
+    return {
+        "registered": True,
+        "claude_cli": True,
+        "command": command,
+        "connected": connected,
+    }
+
+
+def _print_mcp_status() -> None:
+    console.rule("[bold]MCP server[/]")
+    info = _check_mcp_server()
+
+    if not info.get("claude_cli"):
+        console.print(
+            "[yellow]Cannot check MCP status — `claude` CLI not on PATH.[/]"
+        )
+        return
+
+    if not info.get("registered"):
+        console.print(
+            "[red]✗[/] somnium MCP server is [red]not registered[/]"
+        )
+        console.print(
+            "[yellow]Run [cyan]somnium init[/] to register it via "
+            "[cyan]claude mcp add[/].[/]"
+        )
+        return
+
+    connected = info.get("connected")
+    badge = (
+        "[green]✓ Connected[/]"
+        if connected
+        else "[yellow]registered but not reachable[/]"
+    )
+    console.print(f"  [green]✓[/] somnium {badge}")
+    if info.get("command"):
+        console.print(f"    [dim]command:[/] {info['command']}")
+    console.print(
+        "    [dim]tools exposed: memory_search, memory_write, "
+        "memory_status, code_search_semantic[/]"
+    )
+
+
+def _print_config_status(cfg) -> None:
+    console.rule("[bold]Configuration[/]")
     api_key = cfg.embeddings.resolve_api_key()
     key_status = "[green]set[/]" if api_key else "[red]missing[/]"
-    console.print(
-        f"\nVoyage API key: {key_status}  "
-        f"(model_text=[cyan]{cfg.embeddings.model_text}[/], "
-        f"model_code=[cyan]{cfg.embeddings.model_code}[/])"
+    dream_status = (
+        "[green]enabled[/]" if cfg.dream.enabled else "[red]disabled[/]"
     )
+    console.print(f"  Voyage API key: {key_status}")
     console.print(
-        f"Dream mode: "
-        f"{'[green]enabled[/]' if cfg.dream.enabled else '[red]disabled[/]'} "
-        f"(model=[cyan]{cfg.dream.model}[/])"
+        f"    [dim]model_text=[/][cyan]{cfg.embeddings.model_text}[/]"
+        f"  [dim]model_code=[/][cyan]{cfg.embeddings.model_code}[/]"
     )
+    console.print(f"  Dream mode:     {dream_status}")
+    console.print(f"    [dim]model=[/][cyan]{cfg.dream.model}[/]")
+    if cfg.project_root:
+        console.print(f"  Project root:   [cyan]{cfg.project_root}[/]")
+    else:
+        console.print("  Project root:   [dim](none — not in a git repo)[/]")
+    console.print(f"  Global root:    [cyan]{cfg.global_root}[/]")
 
 
 # ----------------------------------------------------------------------
