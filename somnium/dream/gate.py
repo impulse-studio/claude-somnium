@@ -51,7 +51,7 @@ def decide(transcript: Transcript, config: SomniumConfig) -> GateResult:
             category="trivial",
         )
 
-    user_texts = [t.text for t in transcript.user_turns]
+    user_texts = [t.text for t in transcript.real_user_turns]
 
     # Rule 2: every user message is a trivial command → skip.
     if user_texts and all(

@@ -31,7 +31,26 @@ class Transcript:
 
     @property
     def user_turns(self) -> list[Turn]:
+        """All user turns including tool-result-only ones."""
         return [t for t in self.turns if t.role == "user" and t.text.strip()]
+
+    @property
+    def real_user_turns(self) -> list[Turn]:
+        """User turns that contain actual human text, not just
+        [tool_result] markers injected by Claude Code.
+
+        A single `claude -p` call can generate many user-role turns
+        because tool results are sent back as user messages in the
+        Anthropic API. Without this filter, a 1-prompt session with
+        6 tool calls looks like "7 user messages" to the gate.
+        """
+        return [
+            t
+            for t in self.turns
+            if t.role == "user"
+            and t.text.strip()
+            and not _is_tool_result_only(t.text)
+        ]
 
     @property
     def assistant_turns(self) -> list[Turn]:
@@ -39,7 +58,8 @@ class Transcript:
 
     @property
     def n_user_messages(self) -> int:
-        return len(self.user_turns)
+        """Count of real human user messages (excludes tool_result turns)."""
+        return len(self.real_user_turns)
 
     @property
     def file_writes(self) -> list[str]:
@@ -92,6 +112,19 @@ def _summarize_input(inp: Any, max_len: int = 80) -> str:
     return ",".join(keys)
 
 
+_TOOL_RESULT_MARKER = "[tool_result]"
+
+
+def _is_tool_result_only(text: str) -> bool:
+    """True if the text consists solely of [tool_result] markers and whitespace."""
+    stripped = text.strip()
+    if not stripped:
+        return False
+    # Remove all markers, see if anything real is left.
+    cleaned = stripped.replace(_TOOL_RESULT_MARKER, "").strip()
+    return len(cleaned) == 0
+
+
 def _extract_text_and_tools(content: Any) -> tuple[str, list[dict[str, Any]]]:
     """Pull plain text and tool_use blocks out of a message content payload."""
     if isinstance(content, str):
@@ -117,8 +150,10 @@ def _extract_text_and_tools(content: Any) -> tuple[str, list[dict[str, Any]]]:
                 }
             )
         elif btype == "tool_result":
-            # Usually noisy; we drop the body but keep a marker.
-            text_parts.append("[tool_result]")
+            # Keep a marker so we can identify tool-result-only turns
+            # in _is_tool_result_only(). The marker is stripped by the
+            # gate's real_user_turns filter.
+            text_parts.append(_TOOL_RESULT_MARKER)
     return "\n".join(text_parts).strip(), tool_uses
 
 
