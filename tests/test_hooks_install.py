@@ -26,6 +26,18 @@ def fake_settings(tmp_path: Path, monkeypatch):
         "_uninstall_mcp_server",
         lambda: "- mcpServers.somnium",
     )
+    # Stub slash command helpers so tests don't touch the real
+    # ~/.claude/commands/somnium/ directory.
+    monkeypatch.setattr(
+        install_module,
+        "_install_slash_commands",
+        lambda dry_run=False: ["+ /somnium:dream", "+ /somnium:search", "+ /somnium:status"],
+    )
+    monkeypatch.setattr(
+        install_module,
+        "_uninstall_slash_commands",
+        lambda: [],
+    )
     return settings_path
 
 

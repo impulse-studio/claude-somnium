@@ -187,6 +187,11 @@ def load_config(project_root: Path | None = None) -> SomniumConfig:
     global_config_path = global_root / "config.toml"
     merged = _deep_merge(merged, _load_toml(global_config_path))
 
+    # Re-apply SOMNIUM_HOME after the config-file merge — env var must
+    # always win over whatever [storage].global_root the config.toml says.
+    if env_home:
+        merged.setdefault("storage", {})["global_root"] = str(global_root)
+
     # Project config
     if project_root is None:
         project_root = find_project_root()

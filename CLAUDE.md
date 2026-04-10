@@ -20,4 +20,12 @@
 - **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
 <!-- somnium auto-appended 2026-04-10T14:45:58.670011 -->
 - **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
+<!-- somnium auto-appended 2026-04-10T15:16:53.704689 -->
+Remove the duplicate line so this entry appears exactly once:
+
+```
+- **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
+```
+
+The CLAUDE.md currently contains that line twice. Delete the second occurrence.
 <!-- somnium:dream:end -->

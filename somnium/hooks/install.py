@@ -1,6 +1,6 @@
-"""Install / uninstall Somnium hooks and MCP server.
+"""Install / uninstall Somnium hooks, MCP server, and slash commands.
 
-Two distinct edits:
+Three distinct edits:
 
 1. **Hooks** are written to `~/.claude/settings.json` under
    `hooks.{PostToolUse,Stop,UserPromptSubmit}`. Each Somnium-managed
@@ -12,6 +12,11 @@ Two distinct edits:
    scope). We do NOT edit that file directly because Claude Code may
    change its schema, and the CLI handles edge cases like health
    checks and scope semantics.
+
+3. **Slash commands** are `.md` files copied from
+   `somnium/templates/commands/` to `~/.claude/commands/somnium/`.
+   They appear in Claude Code as `/somnium:dream`, `/somnium:search`,
+   `/somnium:status`.
 """
 
 from __future__ import annotations
@@ -263,11 +268,70 @@ def install_hooks(dry_run: bool = False) -> list[str]:
     else:
         actions.append(f"+ mcpServers.{SOMNIUM_MCP_NAME} (would call `claude mcp add`)")
 
+    # ----- Slash commands -----------------------------------------
+    actions.extend(_install_slash_commands(dry_run=dry_run))
+
+    return actions
+
+
+# ------------------------------------------------------------------
+# Slash commands
+# ------------------------------------------------------------------
+
+def _commands_dir() -> Path:
+    """Resolve at call time so it respects HOME changes in tests."""
+    return Path.home() / ".claude" / "commands" / "somnium"
+
+
+def _install_slash_commands(dry_run: bool = False) -> list[str]:
+    """Copy slash command templates to ~/.claude/commands/somnium/."""
+    from importlib import resources
+
+    actions: list[str] = []
+    commands_dir = _commands_dir()
+
+    if dry_run:
+        actions.append("+ slash commands in ~/.claude/commands/somnium/ (would copy)")
+        return actions
+
+    commands_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        templates = resources.files("somnium.templates.commands")
+        for item in templates.iterdir():
+            if not item.name.endswith(".md"):
+                continue
+            target = commands_dir / item.name
+            content = item.read_text(encoding="utf-8")
+            if target.exists() and target.read_text(encoding="utf-8") == content:
+                actions.append(f"= /somnium:{item.name[:-3]} already installed")
+            else:
+                target.write_text(content, encoding="utf-8")
+                verb = "~" if target.exists() else "+"
+                actions.append(f"{verb} /somnium:{item.name[:-3]}")
+    except Exception as exc:  # noqa: BLE001
+        actions.append(f"x slash commands FAILED: {exc}")
+
+    return actions
+
+
+def _uninstall_slash_commands() -> list[str]:
+    """Remove ~/.claude/commands/somnium/ directory."""
+    actions: list[str] = []
+    commands_dir = _commands_dir()
+    if commands_dir.exists():
+        import shutil as _shutil
+
+        _shutil.rmtree(commands_dir)
+        actions.append("- slash commands (~/.claude/commands/somnium/)")
+        parent = commands_dir.parent
+        if parent.exists() and not any(parent.iterdir()):
+            parent.rmdir()
     return actions
 
 
 def uninstall_hooks(dry_run: bool = False) -> list[str]:
-    """Remove all Somnium-marked hooks AND unregister the MCP server."""
+    """Remove all Somnium-marked hooks, MCP server, and slash commands."""
     settings = _load_settings()
     actions: list[str] = []
     hooks_section = settings.get("hooks", {})
@@ -305,4 +369,6 @@ def uninstall_hooks(dry_run: bool = False) -> list[str]:
         action = _uninstall_mcp_server()
         if action:
             actions.append(action)
+        # Slash commands
+        actions.extend(_uninstall_slash_commands())
     return actions

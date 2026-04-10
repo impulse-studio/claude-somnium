@@ -1,10 +1,9 @@
 """Somnium CLI: `somnium memory` subcommands.
 
 Inspect, manage, merge and move memories between scopes without
-leaving the terminal. Every command works on the markdown source
-files directly — the DuckDB index is just a cache and is not
-touched here (run `somnium reindex` after bulk changes if you want
-instant search results).
+leaving the terminal. Each write operation (rm, move, merge) updates
+the DuckDB vector index inline so the change is immediately
+searchable.
 """
 
 from __future__ import annotations
@@ -19,6 +18,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import get_config, reset_config_cache
+from .storage.vector import VectorStore
 
 memory_app = typer.Typer(
     name="memory",
@@ -87,6 +87,53 @@ def _find_memory(slug: str, scope: str | None = None) -> dict | None:
         if m["slug"] == slug:
             return m
     return None
+
+
+def _store_for_scope(scope: str) -> VectorStore | None:
+    """Open the DuckDB vector store for a scope. Returns None if the
+    index file doesn't exist (never built yet)."""
+    cfg = get_config()
+    if scope == "global":
+        path = cfg.global_index_path
+    elif scope == "project":
+        path = cfg.project_index_path
+    else:
+        return None
+    if path is None or not path.exists():
+        return None
+    return VectorStore(path)
+
+
+def _remove_from_index(file_path: Path, scope: str) -> None:
+    """Remove a file from the vector index (best-effort, non-fatal)."""
+    try:
+        store = _store_for_scope(scope)
+        if store:
+            with store:
+                store.delete_file(str(file_path.resolve()))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _reindex_file(file_path: Path, scope: str) -> None:
+    """Reindex a single memory file (best-effort, non-fatal).
+
+    Requires the Voyage API key to be set. If it's not, silently
+    skip — the user can run `somnium reindex` later.
+    """
+    try:
+        cfg = get_config()
+        if cfg.embeddings.resolve_api_key() is None:
+            return
+        from .indexer import index_single_file
+
+        kind = "memory_global" if scope == "global" else "memory_project"
+        store = _store_for_scope(scope)
+        if store:
+            with store:
+                index_single_file(store=store, path=file_path, kind=kind, config=cfg)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _scope_dir(scope: str) -> Path:
@@ -168,6 +215,56 @@ def show(
 
 
 # ------------------------------------------------------------------
+# edit
+# ------------------------------------------------------------------
+
+
+@memory_app.command()
+def edit(
+    slug: str = typer.Argument(help="The slug of the memory to edit."),
+    scope: str = typer.Option(None, "--scope", "-s"),
+) -> None:
+    """Open a memory in $EDITOR, then reindex it on save.
+
+    Uses the EDITOR or VISUAL environment variable. Falls back to
+    `vi` if neither is set.
+    """
+    import hashlib
+    import os
+    import subprocess
+
+    reset_config_cache()
+    m = _find_memory(slug, scope)
+    if not m:
+        console.print(f"[red]Memory not found:[/] {slug}")
+        raise typer.Exit(1)
+
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or "vi"
+    path = m["path"]
+
+    # Capture hash before edit to detect changes
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    proc = subprocess.run([editor, str(path)])
+    if proc.returncode != 0:
+        console.print(f"[red]Editor exited with code {proc.returncode}[/]")
+        raise typer.Exit(1)
+
+    if not path.exists():
+        console.print("[yellow]File was deleted by the editor.[/]")
+        _remove_from_index(path, m["scope"])
+        return
+
+    after = hashlib.sha256(path.read_bytes()).hexdigest()
+    if before == after:
+        console.print("[dim]No changes detected.[/]")
+        return
+
+    _reindex_file(path, m["scope"])
+    console.print(f"[green]Saved and reindexed:[/] {slug}")
+
+
+# ------------------------------------------------------------------
 # rm
 # ------------------------------------------------------------------
 
@@ -194,11 +291,9 @@ def rm(
         if not confirm:
             raise typer.Abort()
 
+    _remove_from_index(m["path"], m["scope"])
     m["path"].unlink()
     console.print(f"[green]Deleted:[/] {m['slug']} ({m['scope']})")
-    console.print(
-        "[dim]Run `somnium reindex` if you want the search index updated.[/]"
-    )
 
 
 # ------------------------------------------------------------------
@@ -236,14 +331,13 @@ def move(
             f"[yellow]Warning:[/] {target} already exists and will be overwritten."
         )
 
+    _remove_from_index(m["path"], m["scope"])
     shutil.move(str(m["path"]), str(target))
+    _reindex_file(target, to)
     console.print(
         f"[green]Moved:[/] {slug}  "
         f"[dim]{m['scope']} → {to}[/]  "
         f"[dim]{target}[/]"
-    )
-    console.print(
-        "[dim]Run `somnium reindex` to update the search indexes.[/]"
     )
 
 
@@ -352,12 +446,12 @@ def merge(
     # Delete originals (except if one has the same path as the target)
     for m in memories:
         if m["path"].resolve() != target_path.resolve() and m["path"].exists():
+            _remove_from_index(m["path"], m["scope"])
             m["path"].unlink()
+
+    _reindex_file(target_path, target_scope)
 
     console.print(
         f"\n[green]Merged {len(memories)} memories into:[/] "
         f"[cyan]{target_path}[/]"
-    )
-    console.print(
-        "[dim]Run `somnium reindex` to update the search indexes.[/]"
     )

@@ -219,14 +219,41 @@ need to think about it.
 ## CLI reference
 
 ```
-somnium init [--project] [--force]      create folders, copy config, install hooks
+somnium init [--project] [--force]      create folders, config, hooks, slash commands
 somnium index [--code]                   embed memories and (optionally) source code
 somnium reindex                          re-check every file and upsert changes
 somnium search "query" [-k 5] [-s scope] debug search from the shell
-somnium status                           health snapshot
+somnium status                           full health snapshot (indexes, hooks, MCP)
 somnium dream [-t path] [--force]        manually run the dream agent
+somnium memory list [-s scope]           list all memories with scope, tags, date
+somnium memory show <slug>               print a memory's full content
+somnium memory edit <slug>               open in $EDITOR, reindex on save
+somnium memory rm <slug> [-y]            delete a memory
+somnium memory move <slug> --to <scope>  move between global and project
+somnium memory merge <s1> <s2> [...]     consolidate N memories into one
 somnium uninstall [--delete-data]        remove hooks; data is kept by default
 ```
+
+## Slash commands
+
+After `somnium init`, these slash commands are available inside Claude
+Code:
+
+- `/somnium:dream` — force the dream agent on the current session
+- `/somnium:search <query>` — search your memories from inside Claude
+- `/somnium:status` — show the health snapshot
+
+## Updating
+
+```bash
+uv tool upgrade claude-somnium    # if installed with uv
+pipx upgrade claude-somnium       # if installed with pipx
+somnium init                      # re-register hooks + MCP + slash commands
+```
+
+The `somnium init` after upgrade is needed because hook paths change
+when the package version moves to a new venv. It's idempotent — safe
+to run any time.
 
 ## Documentation
 

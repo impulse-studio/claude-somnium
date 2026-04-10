@@ -22,6 +22,7 @@ import frontmatter
 from mcp.server.fastmcp import FastMCP
 
 from .config import SomniumConfig, get_config
+from .dream.router import _find_similar_slug
 from .embeddings import get_embedder
 from .indexer import index_single_file
 from .storage.scope import normalize_scopes
@@ -137,6 +138,7 @@ def memory_write(
 
     now = dt.datetime.now()
     slug_base = _slugify(title or (content.splitlines()[0] if content.strip() else "memory"))
+    slug_base = _find_similar_slug(slug_base, target_dir)
     target_path = target_dir / f"{slug_base}.md"
 
     # Preserve original `created_at` if the file already exists, so we

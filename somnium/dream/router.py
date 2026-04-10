@@ -61,6 +61,42 @@ def _slugify(text: str) -> str:
     return slug[:60] or "item"
 
 
+def _levenshtein(a: str, b: str) -> int:
+    """Minimal Levenshtein distance. No external dep."""
+    if len(a) < len(b):
+        return _levenshtein(b, a)
+    if len(b) == 0:
+        return len(a)
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        curr = [i + 1]
+        for j, cb in enumerate(b):
+            curr.append(
+                min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb))
+            )
+        prev = curr
+    return prev[-1]
+
+
+def _find_similar_slug(slug: str, directory: Path, max_distance: int = 3) -> str:
+    """If an existing .md file has a slug within `max_distance` edits,
+    return that slug instead. This collapses near-duplicate titles like
+    "type-hints-required" and "type-hints-are-mandatory" onto one file.
+
+    Returns the original slug if no near match is found.
+    """
+    if not directory.exists():
+        return slug
+    for existing in directory.glob("*.md"):
+        existing_slug = existing.stem
+        if existing_slug == slug:
+            return slug  # exact match, no need to check further
+        dist = _levenshtein(slug, existing_slug)
+        if 0 < dist <= max_distance:
+            return existing_slug  # use the existing slug
+    return slug
+
+
 def _read_existing_created_at(path: Path) -> str | None:
     """Return the existing `created_at` frontmatter value as an
     ISO-8601 string. PyYAML auto-parses dates into datetime objects on
@@ -99,6 +135,7 @@ def _write_memory_md(
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     slug = _slugify(title)
+    slug = _find_similar_slug(slug, target_dir)
     target = target_dir / f"{slug}.md"
 
     now = dt.datetime.now()
@@ -132,6 +169,11 @@ def _write_skill(*, skills_dir: Path, title: str, content: str) -> Path:
     """
     skills_dir.mkdir(parents=True, exist_ok=True)
     slug = _slugify(title)
+    # Check if a skill with a similar slug exists (fuzzy dedup).
+    for existing in skills_dir.iterdir():
+        if existing.is_dir() and _levenshtein(slug, existing.name) <= 3 and (existing / "SKILL.md").exists():
+            slug = existing.name
+            break
     target_dir = skills_dir / slug
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "SKILL.md"
