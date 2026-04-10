@@ -222,7 +222,8 @@ need to think about it.
 somnium init [--project] [--force]      create folders, config, hooks, slash commands
 somnium index [--code]                   embed memories and (optionally) source code
 somnium reindex                          re-check every file and upsert changes
-somnium search "query" [-k 5] [-s scope] debug search from the shell
+somnium search "query" [-k 5] [-s scope] search memories, skills and code
+                                        scopes: all|global|project|skills|code
 somnium status                           full health snapshot (indexes, hooks, MCP)
 somnium dream [-t path] [--force]        manually run the dream agent
 somnium memory list [-s scope]           list all memories with scope, tags, date
