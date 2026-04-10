@@ -6,8 +6,8 @@ by hand, and you never run `twine upload`.
 
 ## One-time setup
 
-Before the first release can succeed, two things must be configured
-on PyPI. Both take about two minutes.
+Before the first release can succeed, one thing must be configured
+on PyPI. Takes about two minutes.
 
 ### 1. Register the project as a PyPI Trusted Publisher
 
@@ -22,31 +22,26 @@ to rotate, no tokens to leak.
    - **Owner**: `impulse-studio`
    - **Repository name**: `claude-somnium`
    - **Workflow name**: `release.yml`
-   - **Environment name**: `pypi`
+   - **Environment name**: *(leave empty)*
 3. Click **Add**.
 
 PyPI lets you register a publisher for a project that doesn't exist
 yet (they call it a "pending publisher"). The first successful upload
 from the workflow creates the project.
 
-### 2. Create the `pypi` environment on GitHub
+> **Note on environments.** We intentionally don't use a GitHub
+> Environment for the release workflow. An environment would only be
+> useful if we needed a "wait for a human to approve" step — but the
+> workflow has no meaningful review point: by the time the publish
+> step runs, the version bump and git tag are already pushed, so
+> blocking at that moment would just leave an orphan tag. The real
+> review point is the PR merge into `dev`, which is handled by normal
+> PR reviews, not by environments. If you later need to restrict
+> which workflows can publish (e.g. because you add another workflow
+> to this repo), you can re-add an environment name to both
+> `release.yml` and the PyPI publisher config.
 
-The release workflow uses `environment: pypi`, which GitHub checks
-against the OIDC claim when talking to PyPI. You just need to create
-the environment once:
-
-1. Open the repo on GitHub → **Settings** → **Environments** → **New environment**.
-2. Name it `pypi`.
-3. (Optional, recommended) Add protection rules:
-   - Require **main** branch deployment (so only the main branch can
-     trigger it).
-   - Require manual approval from one or more reviewers before a
-     release publishes.
-
-You don't need to put any secrets in the environment — OIDC does not
-use secrets.
-
-### 3. (Optional) Protect main
+### 2. (Optional) Protect main
 
 If you want to be extra safe:
 
@@ -104,9 +99,10 @@ pushed to `main` directly, reset it back to the last release tag, and
 rerun.
 
 **"Untrusted publisher" from PyPI.** The trusted publisher registration
-doesn't match. Double-check the owner/repo/workflow/environment values
-on <https://pypi.org/manage/account/publishing/> — they must match the
-strings used in the workflow file exactly.
+doesn't match. Double-check the owner/repo/workflow values on
+<https://pypi.org/manage/account/publishing/> — they must match the
+workflow file exactly. Make sure the **Environment name** field is
+empty on PyPI, because `release.yml` does not set one.
 
 **"The requested URL returned error: 403" on push.** `GITHUB_TOKEN`
 doesn't have permission to push to `main`. Either relax branch

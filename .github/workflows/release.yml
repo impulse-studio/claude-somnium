@@ -41,9 +41,6 @@ jobs:
   release:
     name: Release (${{ inputs.bump }})
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/claude-somnium
 
     steps:
       - name: Checkout dev branch
