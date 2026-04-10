@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+from .cli_memory import memory_app
 from .config import get_config, load_config, reset_config_cache
 from .hooks.install import install_hooks, uninstall_hooks
 from .indexer import index_directory
@@ -25,6 +26,7 @@ app = typer.Typer(
     add_completion=False,
     pretty_exceptions_show_locals=False,
 )
+app.add_typer(memory_app)
 console = Console()
 
 
