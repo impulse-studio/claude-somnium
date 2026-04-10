@@ -6,7 +6,7 @@ incremental path used by the PostToolUse hook for single-file updates.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import SomniumConfig, get_config

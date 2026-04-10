@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 # JSON schema enforced via `claude -p --json-schema`. Matches the
 # categories our router knows how to dispatch.

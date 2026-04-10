@@ -17,14 +17,13 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
-from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 from .config import SomniumConfig, get_config
 from .embeddings import get_embedder
 from .indexer import index_single_file
-from .storage.scope import Scope, normalize_scopes
+from .storage.scope import normalize_scopes
 from .storage.vector import SearchHit, VectorStore
 
 mcp = FastMCP("somnium")

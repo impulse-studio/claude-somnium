@@ -12,10 +12,10 @@ share the global index, project memory lives in its own project DB).
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class Scope(str, Enum):
+class Scope(StrEnum):
     GLOBAL = "global"
     PROJECT = "project"
     SKILL_GLOBAL = "skill_global"

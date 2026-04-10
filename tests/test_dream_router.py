@@ -89,8 +89,8 @@ def test_dispatch_project_memory_without_project_is_skipped(tmp_path, monkeypatc
     cfg.storage.global_root = str(global_root)
     cfg.project_root = None
 
-    from somnium.embeddings.voyage import EmbedResult
     from somnium import indexer as idx_mod
+    from somnium.embeddings.voyage import EmbedResult
 
     class FE:
         def embed(self, texts, **kw):

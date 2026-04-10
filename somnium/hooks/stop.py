@@ -60,8 +60,15 @@ def _spawn_detached_runner(transcript_path: str, cwd: str | None) -> None:
 
     log_dir = Path.home() / ".claude" / "somnium" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    stdout_log = open(log_dir / "dream-run.log", "ab", buffering=0)
-    stderr_log = open(log_dir / "dream-run.err", "ab", buffering=0)
+
+    # We deliberately open without a `with` block because Popen needs
+    # the file descriptors to survive past the handle close here — the
+    # child inherits them on `start_new_session=True`. Closing our copy
+    # in the finally is enough; the kernel keeps the fd alive for the
+    # child. Ruff SIM115 would suggest a context manager, which breaks
+    # the inheritance.
+    stdout_log = open(log_dir / "dream-run.log", "ab", buffering=0)  # noqa: SIM115
+    stderr_log = open(log_dir / "dream-run.err", "ab", buffering=0)  # noqa: SIM115
 
     try:
         subprocess.Popen(
@@ -73,7 +80,6 @@ def _spawn_detached_runner(transcript_path: str, cwd: str | None) -> None:
             env=env,
         )
     finally:
-        # Handles kept open for the child; safe to close our copy.
         stdout_log.close()
         stderr_log.close()
 

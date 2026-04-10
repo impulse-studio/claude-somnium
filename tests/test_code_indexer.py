@@ -8,7 +8,7 @@ import pytest
 
 from somnium import indexer as memory_indexer_module
 from somnium.code import indexer as code_indexer_module
-from somnium.code.indexer import CODE_SCOPE, index_repo_code, index_single_code_file
+from somnium.code.indexer import index_repo_code, index_single_code_file
 from somnium.config import SomniumConfig
 from somnium.embeddings.voyage import EmbedResult
 from somnium.storage.vector import VectorStore

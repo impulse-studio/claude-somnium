@@ -1,0 +1,181 @@
+name: Release
+
+# Manually triggered from the Actions tab. Pick a bump type and the
+# workflow takes care of the rest:
+#
+#   1. Bump version in pyproject.toml and somnium/__init__.py
+#   2. Commit the bump on dev
+#   3. Fast-forward main to match dev
+#   4. Create and push an annotated tag `vX.Y.Z`
+#   5. Build the wheel + sdist
+#   6. Publish to PyPI via OIDC Trusted Publishing (no token needed)
+#   7. Create a GitHub Release with auto-generated notes and attach
+#      the built artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+
+# Required for:
+#   - contents: write  → push the bump commit, main update, and tag
+#   - id-token: write  → OIDC handshake with PyPI Trusted Publishing
+permissions:
+  contents: write
+  id-token: write
+
+# Only one release at a time.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release (${{ inputs.bump }})
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/claude-somnium
+
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          # We need a token that can push to protected branches. The
+          # default GITHUB_TOKEN works if main/dev aren't protected
+          # against Actions writes. If you enable branch protection,
+          # swap this for a fine-grained PAT in secrets.RELEASE_TOKEN.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: bump
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          bump = os.environ["BUMP"]
+
+          # --- pyproject.toml -----------------------------------------
+          pp = Path("pyproject.toml")
+          text = pp.read_text()
+          match = re.search(r'^version\s*=\s*"(\d+)\.(\d+)\.(\d+)"', text, re.M)
+          if not match:
+              sys.exit("ERROR: could not find `version = \"X.Y.Z\"` in pyproject.toml")
+          major, minor, patch = (int(x) for x in match.groups())
+
+          if bump == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif bump == "minor":
+              minor, patch = minor + 1, 0
+          elif bump == "patch":
+              patch += 1
+          else:
+              sys.exit(f"ERROR: unknown bump type {bump!r}")
+
+          new_version = f"{major}.{minor}.{patch}"
+          tag = f"v{new_version}"
+
+          pp.write_text(
+              re.sub(
+                  r'^version\s*=\s*"[^"]+"',
+                  f'version = "{new_version}"',
+                  text,
+                  count=1,
+                  flags=re.M,
+              )
+          )
+
+          # --- somnium/__init__.py ------------------------------------
+          init = Path("somnium/__init__.py")
+          init_text = init.read_text()
+          init.write_text(
+              re.sub(
+                  r'__version__\s*=\s*"[^"]+"',
+                  f'__version__ = "{new_version}"',
+                  init_text,
+                  count=1,
+              )
+          )
+
+          # --- export to GitHub Actions outputs -----------------------
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"new_version={new_version}\n")
+              fh.write(f"tag={tag}\n")
+
+          print(f"::notice::Bumped version to {new_version}")
+          PY
+        env:
+          BUMP: ${{ inputs.bump }}
+
+      - name: Commit bump on dev
+        run: |
+          git add pyproject.toml somnium/__init__.py
+          git commit -m "Release ${{ steps.bump.outputs.tag }}"
+
+      - name: Fast-forward main to dev
+        run: |
+          if git ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+            git fetch origin main
+            git branch -f main origin/main
+            git checkout main
+            git merge --ff-only dev
+          else
+            # First release — main doesn't exist yet. Create it from dev.
+            git checkout -b main
+          fi
+
+      - name: Create annotated tag
+        run: |
+          git tag -a "${{ steps.bump.outputs.tag }}" \
+            -m "Release ${{ steps.bump.outputs.tag }}"
+
+      - name: Push dev, main, and tag
+        run: |
+          git push origin dev
+          git push origin main
+          git push origin "${{ steps.bump.outputs.tag }}"
+
+      - name: Install build tool
+        run: |
+          python -m pip install --upgrade pip build
+
+      - name: Build distribution
+        run: python -m build
+
+      - name: Publish to PyPI (OIDC Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No username/password — OIDC handshake happens automatically
+        # because we have `permissions: id-token: write` above.
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "${{ steps.bump.outputs.tag }}" \
+            --generate-notes \
+            --target main \
+            dist/*

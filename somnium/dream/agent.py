@@ -13,6 +13,7 @@ Design:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -181,10 +182,8 @@ def _parse_output(stdout: str, stderr: str, exit_code: int) -> DreamResult:
 
     # The payload might be a string-encoded JSON object — double-decode.
     if isinstance(payload, str):
-        try:
+        with contextlib.suppress(json.JSONDecodeError):
             payload = json.loads(payload)
-        except json.JSONDecodeError:
-            pass
 
     if not isinstance(payload, dict):
         raise DreamAgentError(

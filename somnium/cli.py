@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import sys
 from importlib import resources
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from . import __version__
 from .config import get_config, load_config, reset_config_cache
 from .hooks.install import install_hooks, uninstall_hooks
 from .indexer import index_directory
-from .storage.scope import Scope
 from .storage.vector import VectorStore
 
 app = typer.Typer(

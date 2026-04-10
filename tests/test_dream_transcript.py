@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from somnium.dream.transcript import Transcript, load_transcript
+from somnium.dream.transcript import load_transcript
 
 
 def _write_jsonl(path: Path, events: list[dict]) -> None:

@@ -64,7 +64,10 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line length — we already cap at 100, edge cases are fine
+    "B008",   # function call in default arg — typer idiom (typer.Option / typer.Argument)
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -73,10 +73,7 @@ def decide(transcript: Transcript, config: SomniumConfig) -> GateResult:
         )
 
     # Otherwise: run. Categorize for the digest.
-    if n_writes > 0:
-        category = "implementation"
-    else:
-        category = "discussion"
+    category = "implementation" if n_writes > 0 else "discussion"
 
     return GateResult(
         decision=GateDecision.RUN,

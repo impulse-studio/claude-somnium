@@ -137,6 +137,8 @@ Deeper guides for each subsystem live in [`docs/`](docs/):
   `config.toml`, per-project overrides, env vars.
 - [**Architecture**](docs/architecture.md) — the package layout for
   contributors, plus how the hooks fit together.
+- [**Releasing**](docs/releasing.md) — how the `Release` GitHub
+  Actions workflow bumps versions and publishes to PyPI via OIDC.
 
 The [**roadmap**](ROADMAP.md) lists what might land next — open an
 issue if you want any of it to land sooner.

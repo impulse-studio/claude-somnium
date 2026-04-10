@@ -10,7 +10,7 @@ from somnium import indexer
 from somnium.config import SomniumConfig
 from somnium.embeddings.voyage import EmbedResult
 from somnium.hooks import user_prompt_submit as hook
-from somnium.storage.vector import SearchHit, VectorStore
+from somnium.storage.vector import VectorStore
 
 
 class _FakeEmbedder:

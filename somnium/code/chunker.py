@@ -13,7 +13,7 @@ Overlap is 25% of chunk_lines, so consecutive chunks share context.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 # File extensions we index as source code. Extend as needed.

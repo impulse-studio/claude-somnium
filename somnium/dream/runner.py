@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from ..config import SomniumConfig
 from . import gate as gate_module
@@ -18,7 +17,7 @@ from .agent import DreamAgentError, DreamResult, run_dream_agent
 from .digest import write_digest
 from .gate import GateDecision, GateResult
 from .router import WriteRecord, dispatch
-from .transcript import Transcript, load_transcript
+from .transcript import load_transcript
 
 
 @dataclass

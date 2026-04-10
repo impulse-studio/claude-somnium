@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from somnium.code.chunker import DEFAULT_CODE_EXTENSIONS, chunk_source_file, file_hash
+from somnium.code.chunker import chunk_source_file, file_hash
 from somnium.code.walker import walk_code
 
 
