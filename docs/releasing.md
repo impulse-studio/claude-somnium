@@ -52,7 +52,24 @@ The workflow runs through end-to-end with no manual gates.
 > environment here exists only to scope the OIDC claim, not to gate
 > on humans.
 
-### 3. (Optional) Protect main
+### 3. Add secrets for the E2E workflow
+
+The `e2e.yml` workflow runs live tests against the Claude and Voyage
+APIs. It needs two secrets in **Settings → Secrets and variables →
+Actions**:
+
+- **`CLAUDE_CODE_OAUTH_TOKEN`** — generate it once with
+  `claude setup-token` on your machine (requires a Claude subscription).
+  The token is long-lived (~1 year). It lets the CI run `claude -p`
+  against your subscription without a separate API key or billing
+  account.
+- **`VOYAGE_API_KEY`** — your Voyage AI key for embeddings.
+
+If you don't set these secrets, the E2E workflow still runs but all 6
+tests are skipped (they check for the env var and `pytest.skip` if
+missing). The unit-test CI (`ci.yml`) never needs them.
+
+### 4. (Optional) Protect main
 
 If you want to be extra safe:
 

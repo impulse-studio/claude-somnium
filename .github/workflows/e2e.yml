@@ -9,8 +9,9 @@ name: E2E
 #   - Manually via workflow_dispatch on any branch (for PR testing).
 #
 # Secrets required:
-#   - ANTHROPIC_API_KEY — for `claude -p` (the dream agent).
-#   - VOYAGE_API_KEY   — for embeddings (memory + code search).
+#   - CLAUDE_CODE_OAUTH_TOKEN — long-lived token from `claude setup-token`
+#     (tied to your Claude subscription, no separate API billing needed).
+#   - VOYAGE_API_KEY — for embeddings (memory + code search).
 
 on:
   push:
@@ -56,7 +57,7 @@ jobs:
             --junitxml=reports/e2e-junit.xml \
             --timeout=120
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           # Isolate somnium state to a temp dir so the runner's home
           # isn't polluted across runs.

@@ -106,7 +106,7 @@ def claude_available():
 
 
 def test_dream_pipeline_with_real_claude(
-    somnium_sandbox, anthropic_key, claude_available
+    somnium_sandbox, claude_auth, claude_available
 ):
     """Run the full dream pipeline with a real Claude sub-agent call.
 
@@ -158,7 +158,7 @@ def test_dream_pipeline_with_real_claude(
 
 
 def test_dream_agent_structured_output_shape(
-    somnium_sandbox, anthropic_key, claude_available
+    somnium_sandbox, claude_auth, claude_available
 ):
     """Verify that the dream agent's structured output matches the
     JSON schema we enforce via --json-schema."""

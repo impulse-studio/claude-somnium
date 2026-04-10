@@ -25,8 +25,16 @@ def voyage_key():
 
 
 @pytest.fixture
-def anthropic_key():
-    return _skip_if_missing("ANTHROPIC_API_KEY")
+def claude_auth():
+    """The dream agent calls `claude -p` which needs auth. Accept either
+    CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY (API key)."""
+    token = os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") or os.environ.get("ANTHROPIC_API_KEY")
+    if not token:
+        pytest.skip(
+            "Neither CLAUDE_CODE_OAUTH_TOKEN nor ANTHROPIC_API_KEY is set — "
+            "skipping live Claude test"
+        )
+    return token
 
 
 @pytest.fixture
