@@ -126,8 +126,8 @@ def init(
     console.print()
     console.print("[bold]Next steps:[/]")
     console.print(
-        f"  1. Put your Voyage key in [cyan]{global_config_path}[/] under "
-        r"\[embeddings], or export [cyan]VOYAGE_API_KEY[/]."
+        "  1. Set your Voyage key: [bold]somnium config set embeddings.api_key pa-...[/]\n"
+        "     or export [cyan]VOYAGE_API_KEY[/]."
     )
     console.print(
         "  2. Memory and the dream loop work automatically now — open "
@@ -861,6 +861,83 @@ def install_hooks_cmd() -> None:
     actions = install_hooks()
     for action in actions:
         console.print(action)
+
+
+@app.command()
+def update(
+    skip_init: bool = typer.Option(
+        False, "--skip-init", help="Only upgrade the package, don't re-register hooks."
+    ),
+) -> None:
+    """Upgrade Somnium to the latest version and re-register hooks.
+
+    Detects whether you installed with uv or pipx and runs the matching
+    upgrade command, then calls `somnium init` to refresh hook paths and
+    the MCP server registration.
+    """
+    pkg = "claude-somnium"
+    manager = _detect_installer(pkg)
+
+    if manager is None:
+        console.print(
+            "[red]error:[/] could not detect how Somnium was installed "
+            "(neither `uv tool` nor `pipx` found it). "
+            "Upgrade manually and rerun [cyan]somnium init[/]."
+        )
+        raise typer.Exit(1)
+
+    if manager == "uv":
+        cmd = ["uv", "tool", "upgrade", pkg]
+    else:
+        cmd = ["pipx", "upgrade", pkg]
+
+    console.print(f"[bold]Upgrading via {manager}[/]: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        console.print(f"[red]upgrade failed:[/]\n{result.stderr.strip()}")
+        raise typer.Exit(1)
+
+    console.print(result.stdout.strip())
+    console.print("[green]✓[/] upgrade complete")
+
+    if not skip_init:
+        console.print()
+        console.print("[bold]Re-registering hooks + MCP server[/]")
+        reset_config_cache()
+        try:
+            actions = install_hooks()
+            for action in actions:
+                console.print(f"  {action}")
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"[red]hook install failed:[/] {exc}")
+        console.print("[green]✓[/] init complete")
+
+
+def _detect_installer(pkg: str) -> str | None:
+    """Return 'uv' or 'pipx' depending on which tool manages the package."""
+    if shutil.which("uv"):
+        try:
+            proc = subprocess.run(
+                ["uv", "tool", "list"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if proc.returncode == 0 and pkg in proc.stdout:
+                return "uv"
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    if shutil.which("pipx"):
+        try:
+            proc = subprocess.run(
+                ["pipx", "list", "--short"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if proc.returncode == 0 and pkg in proc.stdout:
+                return "pipx"
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    return None
 
 
 @app.command()

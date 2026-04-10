@@ -72,6 +72,15 @@ Run `somnium status` any time to verify everything is wired up — it
 prints every index, every hook, and the MCP connection state in one
 shot.
 
+## Updating
+
+```bash
+somnium update
+```
+
+Detects whether you installed with `uv` or `pipx`, upgrades the
+package, and re-registers hooks + MCP server in one shot.
+
 ## What you get
 
 - **Persistent memory across sessions.** Markdown files indexed by Voyage
@@ -232,6 +241,8 @@ somnium memory edit <slug>               open in $EDITOR, reindex on save
 somnium memory rm <slug> [-y]            delete a memory
 somnium memory move <slug> --to <scope>  move between global and project
 somnium memory merge <s1> <s2> [...]     consolidate N memories into one
+somnium update [--skip-init]             upgrade to latest + re-register hooks
+somnium config get|set|list|path         read/write config without editing TOML
 somnium uninstall [--delete-data]        remove hooks; data is kept by default
 ```
 
@@ -243,18 +254,6 @@ Code:
 - `/somnium:dream` — force the dream agent on the current session
 - `/somnium:search <query>` — search your memories from inside Claude
 - `/somnium:status` — show the health snapshot
-
-## Updating
-
-```bash
-uv tool upgrade claude-somnium    # if installed with uv
-pipx upgrade claude-somnium       # if installed with pipx
-somnium init                      # re-register hooks + MCP + slash commands
-```
-
-The `somnium init` after upgrade is needed because hook paths change
-when the package version moves to a new venv. It's idempotent — safe
-to run any time.
 
 ## Documentation
 
