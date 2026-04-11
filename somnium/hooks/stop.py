@@ -84,7 +84,20 @@ def _spawn_detached_runner(transcript_path: str, cwd: str | None) -> None:
         stderr_log.close()
 
 
-def handle_event(event: dict[str, Any]) -> dict[str, Any]:
+def _dream_budget_exceeded(cap: float) -> bool:
+    """Check if cumulative dream costs exceed the budget cap."""
+    try:
+        from ..cost import read_costs
+
+        entries = read_costs(source="dream")
+    except Exception:
+        return False
+    else:
+        total = sum(e.get("cost_usd", 0.0) for e in entries)
+        return total >= cap
+
+
+def handle_event(event: dict[str, Any]) -> dict[str, Any]:  # noqa: PLR0911
     """Core stop-hook logic."""
     # Recursion guard: if we're running inside a dream sub-agent
     # subprocess, do not trigger another dream.
@@ -124,6 +137,14 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
         except Exception as exc:
             log_error(HOOK_NAME, exc)
         return {"gate": "skip", "reason": gate_result.reason}
+
+    # Budget check: skip if cumulative dream cost exceeds the cap.
+    if config.dream.max_budget_usd is not None and _dream_budget_exceeded(config.dream.max_budget_usd):
+            return {
+                "gate": "run",
+                "reason": gate_result.reason,
+                "skipped": f"dream budget cap ${config.dream.max_budget_usd} exceeded",
+            }
 
     # RUN: spawn a detached runner so we return fast.
     _spawn_detached_runner(str(transcript_path), cwd)

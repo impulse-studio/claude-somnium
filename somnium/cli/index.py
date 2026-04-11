@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import typer
 
 from ..config import get_config, reset_config_cache
+from ..cost import set_project
 from ..indexer import index_directory
 from ..storage.parquet_store import ParquetStore
 from . import app, console, global_store
@@ -38,8 +39,10 @@ def index(
     _validate_index_args(cfg, project_only=project_only)
 
     if do_global:
+        set_project("global")
         _index_global(cfg)
     if do_project:
+        set_project(cfg.project_root.name if cfg.project_root else "global")
         _index_project(cfg)
     if code:
         _index_code(cfg)

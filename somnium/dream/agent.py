@@ -180,7 +180,13 @@ def run_dream_agent(
             f"dream agent exited {proc.returncode}: {proc.stderr[:500]}"
         )
 
-    return _parse_output(proc.stdout, proc.stderr, proc.returncode)
+    result = _parse_output(proc.stdout, proc.stderr, proc.returncode)
+
+    # Log dream cost from the envelope
+    project_name = config.project_root.name if config.project_root else "global"
+    _log_dream_cost(proc.stdout, config.dream.model, project_name)
+
+    return result
 
 
 def _parse_output(stdout: str, stderr: str, exit_code: int) -> DreamResult:
@@ -235,3 +241,35 @@ def _parse_output(stdout: str, stderr: str, exit_code: int) -> DreamResult:
         raw_stderr=stderr,
         exit_code=exit_code,
     )
+
+
+def _log_dream_cost(stdout: str, model: str, project: str = "global") -> None:
+    """Extract cost from the claude -p JSON envelope and log it."""
+    try:
+        envelope = json.loads(stdout.strip())
+        if not isinstance(envelope, dict):
+            return
+        cost_usd = envelope.get("total_cost_usd", 0.0) or 0.0
+        usage = envelope.get("usage", {}) or {}
+        input_tokens = usage.get("input_tokens", 0)
+        output_tokens = usage.get("output_tokens", 0)
+        cache_read = usage.get("cache_read_input_tokens", 0)
+        total_tokens = input_tokens + output_tokens + cache_read
+
+        from ..cost import log_cost
+
+        log_cost(
+            source="dream",
+            project=project,
+            model=model,
+            tokens=total_tokens,
+            cost_usd=float(cost_usd),
+            context=f"dream run ({input_tokens} in, {output_tokens} out)",
+            extra={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read,
+            },
+        )
+    except Exception:  # noqa: S110
+        pass

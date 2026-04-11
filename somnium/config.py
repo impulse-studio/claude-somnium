@@ -55,6 +55,7 @@ class DreamConfig(BaseModel):
     model: str = "claude-sonnet-4-6"
     gate_model: str = "claude-haiku-4-5"
     gate: DreamGateConfig = Field(default_factory=DreamGateConfig)
+    max_budget_usd: float | None = None  # None = no limit
 
 
 class ContextInjectionConfig(BaseModel):

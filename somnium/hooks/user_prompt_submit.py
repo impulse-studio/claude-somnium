@@ -138,6 +138,11 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     project_root = find_project_root(Path(cwd)) if cwd else None
     config = load_config(project_root=project_root)
 
+    # Set cost tracking project context
+    from ..cost import set_project
+
+    set_project(project_root.name if project_root else "global")
+
     if not config.context_injection.enabled:
         return {"skipped": "context_injection disabled"}
 

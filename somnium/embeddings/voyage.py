@@ -68,6 +68,7 @@ class VoyageEmbedder:
         batch_size = max(1, self.config.embeddings.batch_size)
         all_embeddings: list[list[float]] = []
 
+        total_tokens = 0
         for start in range(0, len(texts), batch_size):
             batch = texts[start : start + batch_size]
             attempt = 0
@@ -79,6 +80,7 @@ class VoyageEmbedder:
                         input_type=input_type,
                     )
                     all_embeddings.extend(resp.embeddings)
+                    total_tokens += resp.total_tokens
                     break
                 except Exception as exc:
                     attempt += 1
@@ -87,6 +89,16 @@ class VoyageEmbedder:
                             f"Voyage embedding failed after {attempt} attempts: {exc}"
                         ) from exc
                     time.sleep(min(2**attempt, 16))
+
+        from ..cost import log_cost, voyage_cost
+
+        log_cost(
+            source="index",
+            model=model,
+            tokens=total_tokens,
+            cost_usd=voyage_cost(model, total_tokens),
+            context=f"{len(texts)} texts, {input_type}",
+        )
 
         return EmbedResult(embeddings=all_embeddings, model=model, input_type=input_type)
 

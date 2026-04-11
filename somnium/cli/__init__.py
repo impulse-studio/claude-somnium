@@ -50,6 +50,7 @@ app.add_typer(config_app)
 
 # --- Register command modules (each registers @app.command at import) ----
 
+from . import costs as _costs  # noqa: E402
 from . import dream as _dream  # noqa: E402
 from . import index as _index  # noqa: E402
 from . import init as _init  # noqa: E402
