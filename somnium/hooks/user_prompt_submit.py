@@ -30,10 +30,11 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ..config import SomniumConfig
+    from ..storage.vector import SearchHit
 
 from ..config import find_project_root, load_config
+from ..storage.parquet_store import ParquetStore
 from ..storage.scope import normalize_scopes
-from ..storage.vector import SearchHit, VectorStore
 from ._common import log_error, log_info, read_event
 
 HOOK_NAME = "user_prompt_submit"
@@ -117,10 +118,10 @@ def _search_all(prompt: str, config: SomniumConfig, top_k: int, scopes: list[str
 
     hits: list[SearchHit] = []
     if config.global_index_path.exists():
-        with VectorStore(config.global_index_path) as store:
+        with ParquetStore(config.global_index_path) as store:
             hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
     if config.project_index_path and config.project_index_path.exists():
-        with VectorStore(config.project_index_path) as store:
+        with ParquetStore(config.project_index_path) as store:
             hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
 
     hits.sort(key=lambda h: h.score, reverse=True)

@@ -48,14 +48,16 @@ def sandbox_cfg(tmp_path: Path, monkeypatch):
     fake = _FakeEmbedder()
     monkeypatch.setattr(indexer, "get_embedder", lambda c=None: fake)
 
-    # Force embedding_dim=4 in the router's vector store creation path.
+    # Force embedding_dim=4 in the router's ParquetStore creation path.
     import somnium.dream.router as router_module
 
-    class _VS(router_module.VectorStore):
-        def __init__(self, db_path, embedding_dim=4):
-            super().__init__(db_path, embedding_dim=4)
+    real_ps = router_module.ParquetStore
 
-    monkeypatch.setattr(router_module, "VectorStore", _VS)
+    class _PS(real_ps):
+        def __init__(self, parquet_path, embedding_dim=4):
+            super().__init__(parquet_path, embedding_dim=4)
+
+    monkeypatch.setattr(router_module, "ParquetStore", _PS)
 
     return cfg
 

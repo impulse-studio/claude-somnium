@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from importlib import resources
 from pathlib import Path
 
@@ -35,6 +36,8 @@ def init(
 
     if not skip_hooks:
         _register_hooks()
+
+    _setup_merge_driver()
 
     _print_next_steps()
 
@@ -94,6 +97,37 @@ def _register_hooks() -> None:
             "[dim]Rerun with --skip-hooks to skip, then register "
             "them manually.[/]"
         )
+
+
+def _setup_merge_driver() -> None:
+    """Register the Parquet cache merge driver in global git config."""
+    driver_cmd = "python3 -m somnium.templates.merge_cache %O %A %B"
+    try:
+        subprocess.run(
+            ["git", "config", "--global", "merge.somnium-cache.name",
+             "Somnium embedding cache merge"],
+            capture_output=True, check=False,
+        )
+        subprocess.run(
+            ["git", "config", "--global", "merge.somnium-cache.driver", driver_cmd],
+            capture_output=True, check=False,
+        )
+        console.print("[green]✓[/] registered merge driver [cyan]somnium-cache[/] in git config")
+    except Exception as exc:
+        console.print(f"[yellow]~[/] merge driver registration failed: {exc}")
+
+    # Ensure .gitattributes exists in the current project
+    cwd = Path.cwd().resolve()
+    gitattributes = cwd / ".gitattributes"
+    pattern_line = "*.parquet merge=somnium-cache"
+    if gitattributes.exists():
+        content = gitattributes.read_text(encoding="utf-8")
+        if pattern_line not in content:
+            gitattributes.write_text(content.rstrip() + "\n" + pattern_line + "\n", encoding="utf-8")
+            console.print(f"[green]✓[/] added merge driver to [cyan]{gitattributes}[/]")
+    else:
+        gitattributes.write_text(pattern_line + "\n", encoding="utf-8")
+        console.print(f"[green]✓[/] created [cyan]{gitattributes}[/] with merge driver")
 
 
 def _print_next_steps() -> None:

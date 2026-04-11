@@ -55,13 +55,13 @@ def mcp_sandbox(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mcp_server, "get_config", lambda: cfg)
 
-    # Force dim=4 for any VectorStore the server creates.
-    real_vs = mcp_server.VectorStore
+    # Force dim=4 for any ParquetStore the server creates.
+    real_ps = mcp_server.ParquetStore
 
-    def _vs(path, embedding_dim=4):
-        return real_vs(path, embedding_dim=4)
+    def _ps(path, embedding_dim=4):
+        return real_ps(path, embedding_dim=4)
 
-    monkeypatch.setattr(mcp_server, "VectorStore", _vs)
+    monkeypatch.setattr(mcp_server, "ParquetStore", _ps)
 
     # mcp_server imports get_embedder at module load (`from .embeddings
     # import get_embedder`), so we must patch the module-level symbol

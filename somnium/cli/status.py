@@ -14,7 +14,7 @@ import typer
 from rich.table import Table
 
 from ..config import get_config, reset_config_cache
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 from . import app, console
 
 if TYPE_CHECKING:
@@ -59,7 +59,7 @@ def _index_row(
         return (label, missing_msg, "-", "-", "-")
     if not path.exists():
         return (label, str(path), "-", "-", "-")
-    with VectorStore(path) as store:
+    with ParquetStore(path) as store:
         s = store.stats()
         return (label, str(path), str(s["files"]), str(s["chunks"]), str(s["embedding_dim"]))
 
@@ -103,7 +103,7 @@ def _print_code_index(cfg: SomniumConfig) -> None:
         console.print("[yellow]Run [cyan]somnium index --code[/] in this repo to build it.[/]")
         return
 
-    with VectorStore(cfg.project_code_index_path) as store:
+    with ParquetStore(cfg.project_code_index_path) as store:
         s = store.stats()
         table.add_row(str(cfg.project_code_index_path), str(s["files"]), str(s["chunks"]))
     console.print(table)

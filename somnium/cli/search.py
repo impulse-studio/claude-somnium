@@ -7,7 +7,7 @@ import json
 import typer
 
 from ..config import get_config, reset_config_cache
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 from . import app, console, global_store
 
 
@@ -74,7 +74,7 @@ def _search_memory(
         with global_store() as store:
             results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes))
     if cfg.project_index_path and cfg.project_index_path.exists():  # type: ignore[attr-defined]
-        with VectorStore(cfg.project_index_path) as store:  # type: ignore[attr-defined]
+        with ParquetStore(cfg.project_index_path) as store:  # type: ignore[attr-defined]
             results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes))
 
     return results

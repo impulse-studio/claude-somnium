@@ -10,7 +10,7 @@ from somnium import indexer
 from somnium.config import SomniumConfig
 from somnium.embeddings.voyage import EmbedResult
 from somnium.hooks import user_prompt_submit as hook
-from somnium.storage.vector import VectorStore
+from somnium.storage.parquet_store import ParquetStore
 
 
 class _FakeEmbedder:
@@ -42,13 +42,13 @@ def seeded_cfg(tmp_path: Path, monkeypatch):
     # Patch load_config and get_embedder used by the hook module.
     monkeypatch.setattr(hook, "load_config", lambda project_root=None: cfg)
 
-    # Force hook-constructed VectorStore instances to use dim=4.
-    _real_vs = hook.VectorStore
+    # Force hook-constructed ParquetStore instances to use dim=4.
+    _real_ps = hook.ParquetStore
 
-    def _vs_with_dim(db_path, embedding_dim=4):
-        return _real_vs(db_path, embedding_dim=4)
+    def _ps_with_dim(path, embedding_dim=4):
+        return _real_ps(path, embedding_dim=4)
 
-    monkeypatch.setattr(hook, "VectorStore", _vs_with_dim)
+    monkeypatch.setattr(hook, "ParquetStore", _ps_with_dim)
 
     fake = _FakeEmbedder()
 
@@ -61,7 +61,9 @@ def seeded_cfg(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(indexer, "get_embedder", _fake_get_embedder)
 
     # Seed the global index with a couple of chunks.
-    store = VectorStore(cfg.global_index_path, embedding_dim=4)
+    # Use ParquetStore so the .parquet is written (handle_event reads from ParquetStore).
+    _ps = ParquetStore(cfg.global_index_path, embedding_dim=4)
+    store = _ps.__enter__()
     from somnium.storage.markdown import Chunk
 
     chunk1 = Chunk(
@@ -90,7 +92,7 @@ def seeded_cfg(tmp_path: Path, monkeypatch):
         chunks=[chunk2],
         embeddings=[[0.9, 0.1, 0.0, 0.0]],
     )
-    store.close()
+    _ps.__exit__(None, None, None)
 
     return cfg
 

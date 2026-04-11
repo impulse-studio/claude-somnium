@@ -55,13 +55,13 @@ def sandbox_cfg(tmp_path: Path, monkeypatch):
         "load_config",
         lambda project_root=None: cfg,
     )
-    # Force the dim on any VectorStore created via the hook.
+    # Force the dim on any ParquetStore created via the hook.
+    from somnium.storage.parquet_store import ParquetStore as _RealPS
+
     monkeypatch.setattr(
         post_tool_use,
-        "VectorStore",
-        lambda path: __import__(
-            "somnium.storage.vector", fromlist=["VectorStore"]
-        ).VectorStore(path, embedding_dim=4),
+        "ParquetStore",
+        lambda path: _RealPS(path, embedding_dim=4),
     )
 
     return cfg, tmp_path

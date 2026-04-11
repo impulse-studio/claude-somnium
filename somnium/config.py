@@ -97,7 +97,7 @@ class SomniumConfig(BaseModel):
 
     @property
     def global_index_path(self) -> Path:
-        return self.global_root / "index.duckdb"
+        return self.global_root / "index.parquet"
 
     @property
     def dream_dir(self) -> Path:
@@ -119,13 +119,14 @@ class SomniumConfig(BaseModel):
     def project_index_path(self) -> Path | None:
         if not self.project_dir:
             return None
-        return self.project_dir / "index.duckdb"
+        return self.project_dir / "index.parquet"
 
     @property
     def project_code_index_path(self) -> Path | None:
         if not self.project_dir:
             return None
-        return self.project_dir / "code-index.duckdb"
+        return self.project_dir / "code-index.parquet"
+
 
 
 def _load_toml(path: Path) -> dict[str, Any]:

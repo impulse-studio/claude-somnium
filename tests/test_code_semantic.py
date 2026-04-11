@@ -11,6 +11,7 @@ from somnium.code.indexer import CODE_SCOPE, index_repo_code
 from somnium.code.semantic import _parse_hit, search_code
 from somnium.config import SomniumConfig
 from somnium.embeddings.voyage import EmbedResult
+from somnium.storage.parquet_store import ParquetStore
 from somnium.storage.vector import SearchHit, VectorStore
 
 
@@ -115,14 +116,14 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(code_indexer, "get_embedder", lambda c=None: fake)
     monkeypatch.setattr(semantic_module, "get_embedder", lambda c=None: fake)
 
-    # Force dim=4 for the code index
-    real_vs = semantic_module.VectorStore
+    # Force dim=4 for the code index (ParquetStore in semantic, VectorStore in code_indexer)
+    real_ps = semantic_module.ParquetStore
 
-    def _vs(path, embedding_dim=4):
-        return real_vs(path, embedding_dim=4)
+    def _ps(path, embedding_dim=4):
+        return real_ps(path, embedding_dim=4)
 
-    monkeypatch.setattr(semantic_module, "VectorStore", _vs)
-    monkeypatch.setattr(code_indexer, "VectorStore", _vs)
+    monkeypatch.setattr(semantic_module, "ParquetStore", _ps)
+    monkeypatch.setattr(code_indexer, "VectorStore", lambda path, embedding_dim=4: VectorStore(path, embedding_dim=4))
 
     return cfg, repo
 
@@ -144,10 +145,9 @@ def test_search_code_returns_empty_when_index_missing(sandbox):
 
 def test_search_code_returns_indexed_chunks(sandbox):
     cfg, repo = sandbox
-    # Bootstrap the code index
-    store = VectorStore(cfg.project_code_index_path, embedding_dim=4)
-    stats = index_repo_code(root=repo, store=store, config=cfg)
-    store.close()
+    # Bootstrap the code index via ParquetStore so the .parquet exists for search_code
+    with ParquetStore(cfg.project_code_index_path, embedding_dim=4) as store:
+        stats = index_repo_code(root=repo, store=store, config=cfg)
     assert stats.files_embedded == 2
 
     hits = search_code("authentication function", top_k=5, config=cfg)
@@ -161,9 +161,8 @@ def test_search_code_returns_indexed_chunks(sandbox):
 
 def test_search_code_respects_top_k(sandbox):
     cfg, repo = sandbox
-    store = VectorStore(cfg.project_code_index_path, embedding_dim=4)
-    index_repo_code(root=repo, store=store, config=cfg)
-    store.close()
+    with ParquetStore(cfg.project_code_index_path, embedding_dim=4) as store:
+        index_repo_code(root=repo, store=store, config=cfg)
 
     hits = search_code("anything", top_k=1, config=cfg)
     assert len(hits) <= 1

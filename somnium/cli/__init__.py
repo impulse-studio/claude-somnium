@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 
 from ..config import get_config
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 
 app = typer.Typer(
     name="somnium",
@@ -26,18 +26,18 @@ console = Console()
 # --- Shared helpers used by several submodules ---------------------------
 
 
-def global_store(embedding_dim: int = 1024) -> VectorStore:
+def global_store(embedding_dim: int = 1024) -> ParquetStore:
     """Open the global vector store."""
     cfg = get_config()
-    return VectorStore(cfg.global_index_path, embedding_dim=embedding_dim)
+    return ParquetStore(cfg.global_index_path, embedding_dim=embedding_dim)
 
 
-def project_store(embedding_dim: int = 1024) -> VectorStore | None:
+def project_store(embedding_dim: int = 1024) -> ParquetStore | None:
     """Open the project vector store (None if no project detected)."""
     cfg = get_config()
     if not cfg.project_index_path:
         return None
-    return VectorStore(cfg.project_index_path, embedding_dim=embedding_dim)
+    return ParquetStore(cfg.project_index_path, embedding_dim=embedding_dim)
 
 
 # --- Register sub-typer apps (memory, config) ----------------------------

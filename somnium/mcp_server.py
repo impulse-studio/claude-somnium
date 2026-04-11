@@ -24,13 +24,14 @@ from mcp.server.fastmcp import FastMCP
 
 if TYPE_CHECKING:
     from .config import SomniumConfig
+    from .storage.vector import SearchHit
 
 from .config import get_config
 from .dream.router import _find_similar_slug
 from .embeddings import get_embedder
 from .indexer import index_single_file
+from .storage.parquet_store import ParquetStore
 from .storage.scope import normalize_scopes
-from .storage.vector import SearchHit, VectorStore
 
 mcp = FastMCP("somnium")
 
@@ -40,14 +41,14 @@ mcp = FastMCP("somnium")
 # ----------------------------------------------------------------------
 
 
-def _global_store(config: SomniumConfig) -> VectorStore:
-    return VectorStore(config.global_index_path)
+def _global_store(config: SomniumConfig) -> ParquetStore:
+    return ParquetStore(config.global_index_path)
 
 
-def _project_store(config: SomniumConfig) -> VectorStore | None:
+def _project_store(config: SomniumConfig) -> ParquetStore | None:
     if not config.project_index_path:
         return None
-    return VectorStore(config.project_index_path)
+    return ParquetStore(config.project_index_path)
 
 
 def _search_all(
@@ -179,7 +180,7 @@ def memory_write(
 
     # Reindex this single file so it becomes searchable immediately.
     if store_path is not None:
-        with VectorStore(store_path) as store:
+        with ParquetStore(store_path) as store:
             index_single_file(store=store, path=target_path, kind=kind, config=config)
 
     return json.dumps(
@@ -235,7 +236,7 @@ def memory_status() -> str:
         with _global_store(config) as store:
             out["global_stats"] = store.stats()
     if config.project_index_path and config.project_index_path.exists():
-        with VectorStore(config.project_index_path) as store:
+        with ParquetStore(config.project_index_path) as store:
             out["project_stats"] = store.stats()
     return json.dumps(out, indent=2)
 

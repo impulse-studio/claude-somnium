@@ -37,6 +37,10 @@ Thumbs.db
 .claude/somnium/memory/
 .claude/somnium/*.duckdb
 .claude/somnium/*.duckdb.wal
+# Embedding cache is intentionally NOT gitignored — it's committed to
+# git so team members can skip expensive Voyage API calls on rebuild.
+# Merge conflicts are resolved by the somnium-cache merge driver.
+# .claude/somnium/embedding-cache.parquet  ← committed
 scratch/
 
 # Secrets

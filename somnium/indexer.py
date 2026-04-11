@@ -51,11 +51,7 @@ def index_directory(
     config: SomniumConfig | None = None,
     prune_missing: bool = True,
 ) -> IndexStats:
-    """Walk `directory`, embed changed files, upsert into `store`.
-
-    If `prune_missing` is True, files present in the store but missing
-    from disk are removed from the store.
-    """
+    """Walk `directory`, embed changed files, upsert into `store`."""
     cfg = config or get_config()
     stats = IndexStats()
     scope = _scope_for_dir(directory, kind)
@@ -80,7 +76,6 @@ def index_directory(
             continue
 
         if not chunks:
-            # Empty file — remove any old entries and move on.
             store.delete_file(abs_path)
             continue
 
@@ -129,7 +124,6 @@ def index_single_file(
     cfg = config or get_config()
     stats = IndexStats()
     if not path.exists():
-        # File was deleted — drop any stored chunks.
         removed = store.delete_file(str(path.resolve()))
         if removed > 0:
             stats.files_deleted += 1

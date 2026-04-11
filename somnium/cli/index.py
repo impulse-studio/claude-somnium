@@ -8,7 +8,7 @@ import typer
 
 from ..config import get_config, reset_config_cache
 from ..indexer import index_directory
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 from . import app, console, global_store
 
 if TYPE_CHECKING:
@@ -96,7 +96,7 @@ def _index_project(cfg: SomniumConfig) -> None:
     console.print(
         f"[bold]Indexing project memories[/] at [cyan]{cfg.project_memory_dir}[/]"
     )
-    with VectorStore(cfg.project_index_path) as store:
+    with ParquetStore(cfg.project_index_path) as store:
         stats = index_directory(
             store=store,
             directory=cfg.project_memory_dir,
@@ -126,10 +126,11 @@ def _index_code(cfg: SomniumConfig) -> None:
             "(need .git or .claude/somnium marker)"
         )
         raise typer.Exit(1)
+
     from ..code.indexer import index_repo_code
 
     console.print(f"[bold]Indexing project code[/] at [cyan]{cfg.project_root}[/]")
-    with VectorStore(cfg.project_code_index_path) as store:
+    with ParquetStore(cfg.project_code_index_path) as store:
         code_stats = index_repo_code(
             root=cfg.project_root,
             store=store,

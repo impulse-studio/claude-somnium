@@ -33,12 +33,7 @@ class CodeIndexStats:
 
 
 def _to_memory_chunk(cc: CodeChunk) -> MemoryChunk:
-    """Adapt a CodeChunk to the MemoryChunk interface expected by VectorStore.
-
-    We carry the line range in the heading_path so the query layer can
-    recover start/end lines, and keep the body text clean (no prefix),
-    because MemoryChunk.display_text will render breadcrumb + text.
-    """
+    """Adapt a CodeChunk to the MemoryChunk interface expected by VectorStore."""
     breadcrumb = f"[{cc.language}] {cc.file_path.name}:{cc.start_line}-{cc.end_line}"
     return MemoryChunk(
         file_path=cc.file_path,
@@ -88,7 +83,6 @@ def index_repo_code(
             store.delete_file(abs_path)
             continue
 
-        # Translate into the shape VectorStore expects.
         mem_chunks = [_to_memory_chunk(cc) for cc in cchunks]
         texts = [cc.display_text for cc in cchunks]
         result = embedder.embed(texts, kind="code", input_type="document")

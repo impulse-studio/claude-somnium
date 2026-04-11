@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from ..config import SomniumConfig, get_config
 from ..embeddings import get_embedder
-from ..storage.vector import SearchHit, VectorStore
+from ..storage.parquet_store import ParquetStore
 from .indexer import CODE_SCOPE
+
+if TYPE_CHECKING:
+    from ..storage.vector import SearchHit
 
 
 @dataclass
@@ -91,7 +95,7 @@ def search_code(
     embedder = get_embedder(cfg)
     query_vec = embedder.embed_query(query, kind="code")
 
-    with VectorStore(cfg.project_code_index_path) as store:
+    with ParquetStore(cfg.project_code_index_path) as store:
         raw_hits = store.search(query_vec, top_k=top_k, scopes=[CODE_SCOPE])
 
     return [_parse_hit(h) for h in raw_hits]

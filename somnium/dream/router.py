@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ..config import SomniumConfig
 
 from ..indexer import index_single_file
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 
 SKIPPED_CATEGORIES_WITHOUT_PROJECT = {
     "project_memory",
@@ -233,7 +233,7 @@ def _reindex_file(path: Path, kind: str, config: SomniumConfig) -> None:
         return
 
     try:
-        with VectorStore(store_path) as store:
+        with ParquetStore(store_path) as store:
             index_single_file(store=store, path=path, kind=kind, config=config)
     except Exception:  # noqa: S110
         # Dream router must not blow up on a bad index; log elsewhere.

@@ -23,7 +23,7 @@ from ..code.indexer import index_single_code_file
 from ..code.walker import ALWAYS_IGNORE_DIRS
 from ..config import load_config
 from ..indexer import index_single_file
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 from ._common import PathRoute, classify_path, log_error, log_info, read_event
 
 HOOK_NAME = "post_tool_use"
@@ -71,7 +71,7 @@ def _extract_file_paths(event: dict[str, Any]) -> list[str]:
 
 def _reindex_one(path: Path, route: PathRoute, config: SomniumConfig) -> int:
     """Reindex a single file. Returns the number of chunks written."""
-    with VectorStore(route.store_path) as store:
+    with ParquetStore(route.store_path) as store:
         stats = index_single_file(
             store=store, path=path, kind=route.kind, config=config
         )
@@ -154,7 +154,7 @@ def _try_code_reindex(path: Path, config: SomniumConfig) -> dict[str, Any] | Non
     if path.suffix.lower() not in DEFAULT_CODE_EXTENSIONS:
         return None
 
-    with VectorStore(config.project_code_index_path) as store:
+    with ParquetStore(config.project_code_index_path) as store:
         stats = index_single_code_file(store=store, path=path, config=config)
 
     return {

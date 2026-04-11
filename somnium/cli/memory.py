@@ -21,7 +21,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ..config import get_config, reset_config_cache
-from ..storage.vector import VectorStore
+from ..storage.parquet_store import ParquetStore
 
 memory_app = typer.Typer(
     name="memory",
@@ -92,7 +92,7 @@ def _find_memory(slug: str, scope: str | None = None) -> dict | None:
     return None
 
 
-def _store_for_scope(scope: str) -> VectorStore | None:
+def _store_for_scope(scope: str) -> ParquetStore | None:
     """Open the DuckDB vector store for a scope. Returns None if the
     index file doesn't exist (never built yet)."""
     cfg = get_config()
@@ -104,7 +104,7 @@ def _store_for_scope(scope: str) -> VectorStore | None:
         return None
     if path is None or not path.exists():
         return None
-    return VectorStore(path)
+    return ParquetStore(path)
 
 
 def _remove_from_index(file_path: Path, scope: str) -> None:

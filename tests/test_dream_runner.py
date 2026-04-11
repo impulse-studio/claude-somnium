@@ -95,12 +95,12 @@ def sandbox_cfg(tmp_path, monkeypatch):
     # Force the router to use dim=4 for the test stores.
     import somnium.dream.router as router_module
 
-    real_vs = router_module.VectorStore
+    real_ps = router_module.ParquetStore
 
-    def _vs_dim4(path, embedding_dim=4):
-        return real_vs(path, embedding_dim=4)
+    def _ps_dim4(path, embedding_dim=4):
+        return real_ps(path, embedding_dim=4)
 
-    monkeypatch.setattr(router_module, "VectorStore", _vs_dim4)
+    monkeypatch.setattr(router_module, "ParquetStore", _ps_dim4)
     return cfg
 
 
