@@ -127,7 +127,7 @@ def _mcp_server_present() -> bool:
             text=True,
             timeout=5,
         )
-        return result.returncode == 0
+        return result.returncode == 0  # noqa: TRY300
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
@@ -167,7 +167,7 @@ def _install_mcp_server() -> str:
             f"x mcpServers.{SOMNIUM_MCP_NAME} FAILED: "
             f"{proc.stderr.strip() or proc.stdout.strip()}"
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"x mcpServers.{SOMNIUM_MCP_NAME} FAILED: {exc}"
 
 
@@ -191,11 +191,11 @@ def _uninstall_mcp_server() -> str | None:
             f"x mcpServers.{SOMNIUM_MCP_NAME} REMOVE FAILED: "
             f"{proc.stderr.strip() or proc.stdout.strip()}"
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return f"x mcpServers.{SOMNIUM_MCP_NAME} REMOVE FAILED: {exc}"
 
 
-def install_hooks(dry_run: bool = False) -> list[str]:
+def install_hooks(dry_run: bool = False) -> list[str]:  # noqa: PLR0912
     """Install all Somnium hooks AND register the Somnium MCP server.
     Returns a list of human-readable actions that were (or would be) taken."""
     settings = _load_settings()
@@ -238,18 +238,17 @@ def install_hooks(dry_run: bool = False) -> list[str]:
             actions.append(
                 f"+ {spec.event} ({spec.matcher or '*'}) -> {absolute_command}"
             )
+        # Update in place if the inner command differs.
+        elif existing != new_group:
+            existing.clear()
+            existing.update(new_group)
+            actions.append(
+                f"~ {spec.event} ({spec.matcher or '*'}) -> {absolute_command}"
+            )
         else:
-            # Update in place if the inner command differs.
-            if existing != new_group:
-                existing.clear()
-                existing.update(new_group)
-                actions.append(
-                    f"~ {spec.event} ({spec.matcher or '*'}) -> {absolute_command}"
-                )
-            else:
-                actions.append(
-                    f"= {spec.event} ({spec.matcher or '*'}) already installed"
-                )
+            actions.append(
+                f"= {spec.event} ({spec.matcher or '*'}) already installed"
+            )
 
     # Strip any leftover legacy mcpServers entry from settings.json —
     # earlier versions wrote it there. Canonical location is ~/.claude.json.
@@ -309,7 +308,7 @@ def _install_slash_commands(dry_run: bool = False) -> list[str]:
                 target.write_text(content, encoding="utf-8")
                 verb = "~" if target.exists() else "+"
                 actions.append(f"{verb} /somnium:{item.name[:-3]}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         actions.append(f"x slash commands FAILED: {exc}")
 
     return actions

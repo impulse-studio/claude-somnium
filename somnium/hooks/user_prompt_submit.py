@@ -26,7 +26,10 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..config import SomniumConfig
 
 from ..config import find_project_root, load_config
 from ..storage.scope import normalize_scopes
@@ -99,12 +102,13 @@ def _short_path(path: str) -> str:
     home = Path.home()
     try:
         rel = p.resolve().relative_to(home)
-        return f"~/{rel}"
     except ValueError:
         return str(p)
+    else:
+        return f"~/{rel}"
 
 
-def _search_all(prompt: str, config, top_k: int, scopes: list[str]) -> list[SearchHit]:
+def _search_all(prompt: str, config: SomniumConfig, top_k: int, scopes: list[str]) -> list[SearchHit]:
     """Run the search across global + project stores and merge."""
     from ..embeddings import get_embedder  # late import to keep hook startup fast
 
@@ -172,7 +176,7 @@ def main() -> None:
     event = read_event()
     try:
         result = handle_event(event)
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         log_error(HOOK_NAME, exc)
         sys.exit(0)
 
@@ -224,12 +228,12 @@ def _write_state(
                     "n_skills": n_skills,
                     "n_memories": n_memories,
                     "chars": chars,
-                    "timestamp": dt.datetime.now().isoformat(),
+                    "timestamp": dt.datetime.now(tz=dt.UTC).isoformat(),
                 }
             ),
             encoding="utf-8",
         )
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: S110
         pass
 
 

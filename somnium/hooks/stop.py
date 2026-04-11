@@ -67,8 +67,8 @@ def _spawn_detached_runner(transcript_path: str, cwd: str | None) -> None:
     # in the finally is enough; the kernel keeps the fd alive for the
     # child. Ruff SIM115 would suggest a context manager, which breaks
     # the inheritance.
-    stdout_log = open(log_dir / "dream-run.log", "ab", buffering=0)  # noqa: SIM115
-    stderr_log = open(log_dir / "dream-run.err", "ab", buffering=0)  # noqa: SIM115
+    stdout_log = (log_dir / "dream-run.log").open("ab", buffering=0)
+    stderr_log = (log_dir / "dream-run.err").open("ab", buffering=0)
 
     try:
         subprocess.Popen(
@@ -121,7 +121,7 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
                 dream=None,
                 records=None,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log_error(HOOK_NAME, exc)
         return {"gate": "skip", "reason": gate_result.reason}
 
@@ -139,7 +139,7 @@ def main() -> None:
     try:
         result = handle_event(event)
         log_info(HOOK_NAME, str(result))
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         log_error(HOOK_NAME, exc)
     sys.exit(0)
 

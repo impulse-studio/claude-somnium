@@ -188,13 +188,13 @@ def build_user_prompt(
     """
     project_line = project_root or "(no project — general session)"
 
-    def _fmt_titles(items: list[str], max: int = 30) -> str:
+    def _fmt_titles(items: list[str], limit: int = 30) -> str:
         if not items:
             return "  (none)"
-        shown = items[:max]
+        shown = items[:limit]
         out = "\n".join(f'  - "{item}"' for item in shown)
-        if len(items) > max:
-            out += f"\n  - … and {len(items) - max} more"
+        if len(items) > limit:
+            out += f"\n  - … and {len(items) - limit} more"
         return out
 
     return f"""\

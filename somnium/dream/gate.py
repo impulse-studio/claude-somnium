@@ -12,9 +12,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
+from typing import TYPE_CHECKING
 
-from ..config import SomniumConfig
-from .transcript import Transcript
+if TYPE_CHECKING:
+    from ..config import SomniumConfig
+    from .transcript import Transcript
 
 
 class GateDecision(Enum):
@@ -65,7 +67,7 @@ def decide(transcript: Transcript, config: SomniumConfig) -> GateResult:
 
     # Rule 3: no file writes AND short session → probably a Q&A, skip.
     n_writes = len(transcript.file_writes)
-    if n_writes == 0 and transcript.n_user_messages < 6:
+    if n_writes == 0 and transcript.n_user_messages < 6:  # noqa: PLR2004
         return GateResult(
             decision=GateDecision.SKIP,
             reason="no file writes and short session (likely Q&A)",

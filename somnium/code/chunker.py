@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # File extensions we index as source code. Extend as needed.
 DEFAULT_CODE_EXTENSIONS = {

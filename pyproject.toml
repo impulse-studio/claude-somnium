@@ -41,7 +41,9 @@ dev = [
     "pytest-cov>=5.0",
     "pytest-timeout>=2.3",
     "ruff>=0.5",
-    "mypy>=1.10",
+    "pyright>=1.1",
+    "vulture>=2.11",
+    "pip-audit>=2.7",
 ]
 
 [project.scripts]
@@ -64,11 +66,61 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = [
-    "E501",   # line length — we already cap at 100, edge cases are fine
-    "B008",   # function call in default arg — typer idiom (typer.Option / typer.Argument)
+select = [
+    "F", "E", "W", "I", "N", "UP",
+    "ANN", "B", "A", "COM", "C4",
+    "DTZ", "ISC", "ICN", "PIE", "PT",
+    "Q", "RSE", "RET", "SLF", "SIM",
+    "TID", "TCH", "ARG", "ERA", "PGH",
+    "PL", "TRY", "FLY", "PERF", "FURB",
+    "RUF", "S", "PTH",
 ]
+ignore = [
+    "E501",     # line length — handled by formatter
+    "COM812",   # trailing comma — conflicts with formatter
+    "ISC001",   # implicit string concat — conflicts with formatter
+    "TRY003",   # long messages in raise — too strict for ValueError/TypeError
+    "B008",     # function call in default arg — typer idiom (typer.Option / typer.Argument)
+    "ANN401",   # dynamically typed expressions (Any) — needed for generic helpers
+    "TID252",   # relative imports — project convention, acceptable within same package
+    "PLC0415",  # import outside top-level — intentional lazy imports for CLI startup speed
+    "S603",     # subprocess-without-shell-equals-true — we control all commands
+    "S607",     # start-process-with-partial-path — we use shutil.which() or known binaries
+    "PLW1510",  # subprocess-run-without-check — we check returncode manually
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "ANN", "ARG", "PLR2004", "PLR0913", "SLF001"]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.pylint]
+max-args = 7
+max-returns = 6
+max-statements = 50
+
+[tool.ruff.lint.isort]
+known-first-party = ["somnium"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnnecessaryTypeIgnoreComment = true
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["somnium"]
+
+[tool.coverage.report]
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "@overload",
+]

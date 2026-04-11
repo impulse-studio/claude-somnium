@@ -21,8 +21,10 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import duckdb
 
@@ -61,7 +63,7 @@ class VectorStore:
     Use as a context manager or call .close() when done.
     """
 
-    def __init__(self, db_path: Path, embedding_dim: int = 1024):
+    def __init__(self, db_path: Path, embedding_dim: int = 1024) -> None:
         self.db_path = db_path
         self.embedding_dim = embedding_dim
         self._lock = threading.Lock()
@@ -143,7 +145,7 @@ class VectorStore:
     def __enter__(self) -> VectorStore:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object) -> None:
         self.close()
 
     # ------------------------------------------------------------------
@@ -292,7 +294,7 @@ class VectorStore:
             {where_sql}
             ORDER BY score DESC
             LIMIT ?
-        """
+        """  # noqa: S608
 
         with self._lock:
             rows = self._conn.execute(sql, params).fetchall()

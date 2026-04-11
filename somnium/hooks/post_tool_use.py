@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..config import SomniumConfig
 
 from ..code.chunker import DEFAULT_CODE_EXTENSIONS
 from ..code.indexer import index_single_code_file
@@ -66,7 +69,7 @@ def _extract_file_paths(event: dict[str, Any]) -> list[str]:
     return out
 
 
-def _reindex_one(path: Path, route: PathRoute, config) -> int:
+def _reindex_one(path: Path, route: PathRoute, config: SomniumConfig) -> int:
     """Reindex a single file. Returns the number of chunks written."""
     with VectorStore(route.store_path) as store:
         stats = index_single_file(
@@ -128,7 +131,7 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     return {"reindexed": results}
 
 
-def _try_code_reindex(path: Path, config) -> dict[str, Any] | None:
+def _try_code_reindex(path: Path, config: SomniumConfig) -> dict[str, Any] | None:
     """If `path` is a source file under the current project and the
     project has a code index, reindex it. Returns a record dict or None
     if this file is not eligible for code indexing.
@@ -168,7 +171,7 @@ def main() -> None:
         # Log only if something actually happened.
         if result.get("reindexed"):
             log_info(HOOK_NAME, str(result))
-    except BaseException as exc:  # noqa: BLE001
+    except BaseException as exc:
         log_error(HOOK_NAME, exc)
     # Always exit 0 so Claude Code is never blocked by us.
     sys.exit(0)

@@ -11,13 +11,16 @@ raw agent stdout for debugging.
 from __future__ import annotations
 
 import datetime as dt
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..config import SomniumConfig
-from .agent import DreamResult
-from .gate import GateResult
-from .router import WriteRecord
-from .transcript import Transcript
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ..config import SomniumConfig
+    from .agent import DreamResult
+    from .gate import GateResult
+    from .router import WriteRecord
+    from .transcript import Transcript
 
 
 def _fmt_path(p: str) -> str:
@@ -26,7 +29,7 @@ def _fmt_path(p: str) -> str:
     return f"`{p}`"
 
 
-def write_digest(
+def write_digest(  # noqa: PLR0915
     *,
     config: SomniumConfig,
     transcript: Transcript,
@@ -39,7 +42,7 @@ def write_digest(
     sessions_dir = config.dream_dir / "sessions"
     sessions_dir.mkdir(parents=True, exist_ok=True)
 
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=dt.UTC)
     session_id = transcript.session_id or "unknown"
     filename = f"{now.strftime('%Y-%m-%dT%H%M%S')}-{session_id[:8]}.md"
     target = sessions_dir / filename
@@ -81,11 +84,11 @@ def write_digest(
         lines.append("")
         lines.append("| Status | Category | Title | Path | Reason |")
         lines.append("|---|---|---|---|---|")
-        for r in records:
-            lines.append(
-                f"| {r.status} | {r.category} | {r.title} | "
-                f"{_fmt_path(r.path)} | {r.reason or ''} |"
-            )
+        lines.extend(
+            f"| {r.status} | {r.category} | {r.title} | "
+            f"{_fmt_path(r.path)} | {r.reason or ''} |"
+            for r in records
+        )
         lines.append("")
 
     if error:

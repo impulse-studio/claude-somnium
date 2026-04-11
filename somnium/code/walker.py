@@ -58,7 +58,7 @@ def walk_code(
         # Prune ignored dirs in place so os.walk skips them.
         pruned: list[str] = []
         for d in dirnames:
-            if d.startswith(".") and d not in {".github"}:
+            if d.startswith(".") and d != ".github":
                 continue
             if d in ignore_set:
                 continue

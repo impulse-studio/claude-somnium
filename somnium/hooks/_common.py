@@ -17,9 +17,12 @@ import json
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..config import SomniumConfig, load_config
+from ..config import load_config
+
+if TYPE_CHECKING:
+    from ..config import SomniumConfig
 from ..storage.scope import Scope
 
 
@@ -45,11 +48,11 @@ def log_error(hook_name: str, exc: BaseException) -> None:
         log_path = log_dir / "hooks.log"
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(
-                f"[{dt.datetime.now().isoformat()}] {hook_name}: {exc!r}\n"
+                f"[{dt.datetime.now(tz=dt.UTC).isoformat()}] {hook_name}: {exc!r}\n"
                 f"{traceback.format_exc()}\n"
             )
-    except Exception:
-        pass  # last-resort swallow
+    except Exception:  # noqa: S110 — last-resort swallow
+        pass
     # Also write a one-liner to stderr for visible feedback
     sys.stderr.write(f"[somnium:{hook_name}] {exc!r}\n")
 
@@ -62,8 +65,8 @@ def log_info(hook_name: str, message: str) -> None:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = log_dir / "hooks.log"
         with log_path.open("a", encoding="utf-8") as fh:
-            fh.write(f"[{dt.datetime.now().isoformat()}] {hook_name}: {message}\n")
-    except Exception:
+            fh.write(f"[{dt.datetime.now(tz=dt.UTC).isoformat()}] {hook_name}: {message}\n")
+    except Exception:  # noqa: S110
         pass
 
 
@@ -75,7 +78,7 @@ def log_info(hook_name: str, message: str) -> None:
 class PathRoute:
     """Classification of a file path into a Somnium scope."""
 
-    __slots__ = ("scope", "store_path", "kind", "root")
+    __slots__ = ("kind", "root", "scope", "store_path")
 
     def __init__(self, scope: str, store_path: Path, kind: str, root: Path) -> None:
         self.scope = scope
@@ -90,13 +93,14 @@ class PathRoute:
 def _is_under(path: Path, parent: Path) -> bool:
     try:
         path.resolve().relative_to(parent.resolve())
-        return True
     except (ValueError, FileNotFoundError):
         # FileNotFoundError can happen if `path` doesn't exist yet;
         # fall back to string comparison.
         return str(path.resolve(strict=False)).startswith(
             str(parent.resolve(strict=False))
         )
+    else:
+        return True
 
 
 def classify_path(path: Path, config: SomniumConfig) -> PathRoute | None:
@@ -133,7 +137,7 @@ def classify_path(path: Path, config: SomniumConfig) -> PathRoute | None:
     # Project memory / skills (only if a project is detected)
     if config.project_root is not None:
         if config.project_memory_dir and _is_under(path, config.project_memory_dir):
-            assert config.project_index_path is not None
+            assert config.project_index_path is not None  # noqa: S101
             return PathRoute(
                 scope=Scope.PROJECT.value,
                 store_path=config.project_index_path,
@@ -142,7 +146,7 @@ def classify_path(path: Path, config: SomniumConfig) -> PathRoute | None:
             )
         project_skills = config.project_root / ".claude" / "skills"
         if _is_under(path, project_skills):
-            assert config.project_index_path is not None
+            assert config.project_index_path is not None  # noqa: S101
             return PathRoute(
                 scope=Scope.SKILL_PROJECT.value,
                 store_path=config.project_index_path,

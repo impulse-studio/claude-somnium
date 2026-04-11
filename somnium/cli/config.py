@@ -6,15 +6,18 @@ Supports dot-notation keys like `dream.model` or `embeddings.model_code`.
 
 from __future__ import annotations
 
+import contextlib
 import tomllib
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from .config import get_config, reset_config_cache
+from ..config import get_config, reset_config_cache
 
 config_app = typer.Typer(
     name="config",
@@ -78,10 +81,8 @@ def _set_key(data: dict, key: str, value: str) -> dict:
         try:
             parsed = int(value)
         except ValueError:
-            try:
+            with contextlib.suppress(ValueError):
                 parsed = float(value)
-            except ValueError:
-                pass  # keep as string
 
     current[parts[-1]] = parsed
     return data
@@ -162,7 +163,7 @@ def get(
 
     if value is None:
         console.print("[dim](not set)[/]")
-    elif _is_secret_key(key) and isinstance(value, str) and len(value) > 8:
+    elif _is_secret_key(key) and isinstance(value, str) and len(value) > 8:  # noqa: PLR2004
         console.print(f"{value[:6]}...{value[-4:]}")
     elif isinstance(value, dict):
         # Print a table for sections
@@ -262,8 +263,8 @@ def list_config(
 
     for key, val in _flatten(data):
         # Mask API keys
-        if "api_key" in key.lower() and val and len(val) > 8 and val != "None":
-            val = val[:6] + "..." + val[-4:]
+        if "api_key" in key.lower() and val and len(val) > 8 and val != "None":  # noqa: PLR2004
+            val = val[:6] + "..." + val[-4:]  # noqa: PLW2901
         table.add_row(key, val)
 
     console.print(table)

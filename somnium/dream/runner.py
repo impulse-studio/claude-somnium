@@ -9,15 +9,21 @@ Called from two places:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-from ..config import SomniumConfig
 from . import gate as gate_module
-from .agent import DreamAgentError, DreamResult, run_dream_agent
+from .agent import DreamAgentError, run_dream_agent
 from .digest import write_digest
 from .gate import GateDecision, GateResult
-from .router import WriteRecord, dispatch
+from .router import dispatch
 from .transcript import load_transcript
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ..config import SomniumConfig
+    from .agent import DreamResult
+    from .router import WriteRecord
 
 
 @dataclass

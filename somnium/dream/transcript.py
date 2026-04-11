@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @dataclass
@@ -168,7 +170,7 @@ def load_transcript(path: Path) -> Transcript:
 
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             if not line:
                 continue
             try:

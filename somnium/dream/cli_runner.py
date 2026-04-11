@@ -44,7 +44,7 @@ def main() -> None:
             config=config,
             force=args.force,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log_error("dream_runner", exc)
         sys.exit(1)
 

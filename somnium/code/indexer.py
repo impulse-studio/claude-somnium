@@ -7,14 +7,17 @@ incremental path used by the PostToolUse hook for single-file updates.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ..config import SomniumConfig, get_config
 from ..embeddings import get_embedder
 from ..storage.markdown import Chunk as MemoryChunk
-from ..storage.vector import VectorStore
+from ..storage.vector import VectorStore  # noqa: TC001 — runtime monkeypatch target
 from .chunker import CodeChunk, chunk_source_file
 from .walker import walk_code
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 CODE_SCOPE = "code"
 
@@ -112,8 +115,8 @@ def index_repo_code(
 
 
 def _list_stored_paths(store: VectorStore, scope: str) -> list[str]:
-    with store._lock:
-        rows = store._conn.execute(
+    with store._lock:  # noqa: SLF001
+        rows = store._conn.execute(  # noqa: SLF001
             "SELECT file_path FROM files WHERE scope = ?", [scope]
         ).fetchall()
     return [row[0] for row in rows]

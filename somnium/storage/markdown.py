@@ -15,8 +15,10 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import frontmatter
 
@@ -68,7 +70,7 @@ def _split_into_sections(body: str) -> list[tuple[list[str], str]]:
     current_stack: list[tuple[int, str]] = []  # (level, text)
     current_body: list[str] = []
 
-    def flush():
+    def flush() -> None:
         if not current_body and not current_stack:
             return
         text = "\n".join(current_body).strip()
@@ -109,7 +111,7 @@ def _split_oversized(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
     buf: list[str] = []
     buf_len = 0
     for para in re.split(r"\n{2,}", text):
-        para = para.strip()
+        para = para.strip()  # noqa: PLW2901
         if not para:
             continue
         if buf_len + len(para) + 2 > max_chars and buf:

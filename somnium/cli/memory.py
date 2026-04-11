@@ -10,15 +10,18 @@ from __future__ import annotations
 
 import re
 import shutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import frontmatter
+
+if TYPE_CHECKING:
+    from pathlib import Path
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from .config import get_config, reset_config_cache
-from .storage.vector import VectorStore
+from ..config import get_config, reset_config_cache
+from ..storage.vector import VectorStore
 
 memory_app = typer.Typer(
     name="memory",
@@ -57,7 +60,7 @@ def _gather_memories(
             except Exception:
                 post = frontmatter.Post("", metadata={})
             # Extract title from H1
-            h1 = re.search(r"^#\s+(.+?)\s*$", post.content or "", re.M)
+            h1 = re.search(r"^#\s+(.+?)\s*$", post.content or "", re.MULTILINE)
             title = (
                 h1.group(1).strip()
                 if h1
@@ -111,7 +114,7 @@ def _remove_from_index(file_path: Path, scope: str) -> None:
         if store:
             with store:
                 store.delete_file(str(file_path.resolve()))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: S110
         pass
 
 
@@ -125,14 +128,14 @@ def _reindex_file(file_path: Path, scope: str) -> None:
         cfg = get_config()
         if cfg.embeddings.resolve_api_key() is None:
             return
-        from .indexer import index_single_file
+        from ..indexer import index_single_file
 
         kind = "memory_global" if scope == "global" else "memory_project"
         store = _store_for_scope(scope)
         if store:
             with store:
                 index_single_file(store=store, path=file_path, kind=kind, config=cfg)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: S110
         pass
 
 
@@ -289,7 +292,7 @@ def rm(
         )
         confirm = typer.confirm("Continue?")
         if not confirm:
-            raise typer.Abort()
+            raise typer.Abort
 
     _remove_from_index(m["path"], m["scope"])
     m["path"].unlink()
@@ -347,7 +350,7 @@ def move(
 
 
 @memory_app.command()
-def merge(
+def merge(  # noqa: PLR0912, PLR0915
     slugs: list[str] = typer.Argument(help="Two or more slugs to merge."),
     title: str = typer.Option(
         None,
@@ -374,7 +377,7 @@ def merge(
             --title "Drizzle ORM usage"
     """
     reset_config_cache()
-    if len(slugs) < 2:
+    if len(slugs) < 2:  # noqa: PLR2004
         console.print("[red]Need at least 2 slugs to merge.[/]")
         raise typer.Exit(1)
 
@@ -417,13 +420,13 @@ def merge(
             console.print(f"    - {m['slug']} ({m['scope']})")
         confirm = typer.confirm("Continue?")
         if not confirm:
-            raise typer.Abort()
+            raise typer.Abort
 
     # Write the merged file
     import datetime as dt
     import json
 
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=dt.UTC)
     slug_merged = re.sub(r"[^a-zA-Z0-9\s-]", "", merged_title).strip().lower()
     slug_merged = re.sub(r"[\s-]+", "-", slug_merged)[:60] or "merged"
     target_path = target_dir / f"{slug_merged}.md"

@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import voyageai
 
-from ..config import SomniumConfig, get_config
+if TYPE_CHECKING:
+    from ..config import SomniumConfig
+
+from ..config import get_config
 
 # voyage-3.5 and voyage-code-3 both default to 1024 dims.
 DEFAULT_EMBEDDING_DIM = 1024
@@ -32,13 +36,13 @@ class VoyageEmbedder:
     otherwise `kind="text"`.
     """
 
-    def __init__(self, config: SomniumConfig | None = None):
+    def __init__(self, config: SomniumConfig | None = None) -> None:
         self.config = config or get_config()
         api_key = self.config.embeddings.resolve_api_key()
         if not api_key:
             raise RuntimeError(
                 "No Voyage API key found. Set VOYAGE_API_KEY or put "
-                "`api_key = \"...\"` in [embeddings] of your config.toml."
+                '`api_key = "..."` in [embeddings] of your config.toml.'
             )
         self._client = voyageai.Client(api_key=api_key)
 
@@ -76,9 +80,9 @@ class VoyageEmbedder:
                     )
                     all_embeddings.extend(resp.embeddings)
                     break
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     attempt += 1
-                    if attempt >= 5:
+                    if attempt >= 5:  # noqa: PLR2004
                         raise RuntimeError(
                             f"Voyage embedding failed after {attempt} attempts: {exc}"
                         ) from exc
@@ -98,7 +102,7 @@ _CACHED_EMBEDDER: VoyageEmbedder | None = None
 def get_embedder(config: SomniumConfig | None = None) -> VoyageEmbedder:
     """Return a process-wide cached embedder. Reset by calling with
     a fresh config object."""
-    global _CACHED_EMBEDDER
+    global _CACHED_EMBEDDER  # noqa: PLW0603
     if _CACHED_EMBEDDER is None or config is not None:
         _CACHED_EMBEDDER = VoyageEmbedder(config=config)
     return _CACHED_EMBEDDER

@@ -8,13 +8,17 @@ by the CLI (`somnium index`, `somnium reindex`) and by the hooks
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .config import SomniumConfig, get_config
 from .embeddings import get_embedder
 from .storage.markdown import chunk_file, walk_memory_dir
 from .storage.scope import Scope
-from .storage.vector import VectorStore
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from .storage.vector import VectorStore
 
 
 @dataclass
@@ -26,7 +30,7 @@ class IndexStats:
     chunks_upserted: int = 0
 
 
-def _scope_for_dir(base_dir: Path, kind: str) -> str:
+def _scope_for_dir(base_dir: Path, kind: str) -> str:  # noqa: ARG001
     """Map a source directory + kind to a scope value."""
     if kind == "memory_global":
         return Scope.GLOBAL.value
@@ -107,8 +111,8 @@ def index_directory(
 
 def _list_stored_paths(store: VectorStore, scope: str) -> list[str]:
     """Return all file_paths currently stored for a given scope."""
-    with store._lock:  # internal access for a small helper
-        rows = store._conn.execute(
+    with store._lock:  # noqa: SLF001 — internal access for a small helper
+        rows = store._conn.execute(  # noqa: SLF001
             "SELECT file_path FROM files WHERE scope = ?", [scope]
         ).fetchall()
     return [row[0] for row in rows]

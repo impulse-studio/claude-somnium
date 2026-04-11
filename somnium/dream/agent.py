@@ -18,12 +18,15 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..config import SomniumConfig
 from . import prompts
-from .transcript import Transcript
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ..config import SomniumConfig
+    from .transcript import Transcript
 
 # Env var set on the sub-agent subprocess so the Somnium Stop hook
 # detects it and skips — prevents recursive dream loops.
@@ -73,7 +76,7 @@ def _collect_existing_titles(directory: Path, limit: int = 50) -> list[str]:
             titles.append(path.stem)
             continue
 
-        h1 = re.search(r"^#\s+(.+?)\s*$", post.content or "", re.M)
+        h1 = re.search(r"^#\s+(.+?)\s*$", post.content or "", re.MULTILINE)
         if h1:
             titles.append(h1.group(1).strip())
         elif post.metadata.get("title"):
@@ -87,10 +90,11 @@ def _collect_existing_titles(directory: Path, limit: int = 50) -> list[str]:
 def _collect_skill_names(directory: Path, limit: int = 50) -> list[str]:
     if not directory.exists():
         return []
-    names: list[str] = []
-    for p in sorted(directory.iterdir()):
-        if p.is_dir() and (p / "SKILL.md").exists():
-            names.append(p.name)
+    names: list[str] = [
+        p.name
+        for p in sorted(directory.iterdir())
+        if p.is_dir() and (p / "SKILL.md").exists()
+    ]
     return names[:limit]
 
 

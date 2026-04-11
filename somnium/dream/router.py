@@ -18,12 +18,15 @@ import datetime as dt
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import frontmatter
 
-from ..config import SomniumConfig
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ..config import SomniumConfig
+
 from ..indexer import index_single_file
 from ..storage.vector import VectorStore
 
@@ -138,7 +141,7 @@ def _write_memory_md(
     slug = _find_similar_slug(slug, target_dir)
     target = target_dir / f"{slug}.md"
 
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=dt.UTC)
     created_at = _read_existing_created_at(target) or now.isoformat()
 
     fm_lines = [
@@ -171,7 +174,7 @@ def _write_skill(*, skills_dir: Path, title: str, content: str) -> Path:
     slug = _slugify(title)
     # Check if a skill with a similar slug exists (fuzzy dedup).
     for existing in skills_dir.iterdir():
-        if existing.is_dir() and _levenshtein(slug, existing.name) <= 3 and (existing / "SKILL.md").exists():
+        if existing.is_dir() and _levenshtein(slug, existing.name) <= 3 and (existing / "SKILL.md").exists():  # noqa: PLR2004
             slug = existing.name
             break
     target_dir = skills_dir / slug
@@ -193,7 +196,7 @@ def _append_claude_md_patch(*, project_root: Path, content: str) -> Path:
     claude_md = project_root / "CLAUDE.md"
     existing = claude_md.read_text(encoding="utf-8") if claude_md.exists() else ""
 
-    stamp = dt.datetime.now().isoformat()
+    stamp = dt.datetime.now(tz=dt.UTC).isoformat()
     block = (
         f"\n{CLAUDE_MD_MARKER_START}\n"
         f"<!-- somnium auto-appended {stamp} -->\n"
@@ -232,7 +235,7 @@ def _reindex_file(path: Path, kind: str, config: SomniumConfig) -> None:
     try:
         with VectorStore(store_path) as store:
             index_single_file(store=store, path=path, kind=kind, config=config)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: S110
         # Dream router must not blow up on a bad index; log elsewhere.
         pass
 
@@ -290,7 +293,7 @@ def dispatch(
                 )
 
             elif category == "project_memory":
-                assert config.project_memory_dir is not None
+                assert config.project_memory_dir is not None  # noqa: S101
                 path = _write_memory_md(
                     target_dir=config.project_memory_dir,
                     title=title,
@@ -320,7 +323,7 @@ def dispatch(
                 )
 
             elif category == "project_skill":
-                assert config.project_root is not None
+                assert config.project_root is not None  # noqa: S101
                 path = _write_skill(
                     skills_dir=config.project_root / ".claude" / "skills",
                     title=title,
@@ -332,7 +335,7 @@ def dispatch(
                 )
 
             elif category == "claude_md_patch":
-                assert config.project_root is not None
+                assert config.project_root is not None  # noqa: S101
                 path = _append_claude_md_patch(
                     project_root=config.project_root,
                     content=content,
@@ -352,7 +355,7 @@ def dispatch(
                     )
                 )
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             records.append(
                 WriteRecord(
                     category=category,

@@ -17,11 +17,15 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+from typing import TYPE_CHECKING
 
 import frontmatter
 from mcp.server.fastmcp import FastMCP
 
-from .config import SomniumConfig, get_config
+if TYPE_CHECKING:
+    from .config import SomniumConfig
+
+from .config import get_config
 from .dream.router import _find_similar_slug
 from .embeddings import get_embedder
 from .indexer import index_single_file
@@ -136,7 +140,7 @@ def memory_write(
 
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    now = dt.datetime.now()
+    now = dt.datetime.now(tz=dt.UTC)
     slug_base = _slugify(title or (content.splitlines()[0] if content.strip() else "memory"))
     slug_base = _find_similar_slug(slug_base, target_dir)
     target_path = target_dir / f"{slug_base}.md"
@@ -154,7 +158,7 @@ def memory_write(
                 created_at = existing_value.isoformat()
             elif existing_value is not None:
                 created_at = str(existing_value)
-        except Exception:
+        except Exception:  # noqa: S110
             pass
 
     fm_lines = [
