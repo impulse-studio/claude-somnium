@@ -2,10 +2,10 @@
 # Somnium status line for Claude Code.
 # Installed by `somnium status --install-line`.
 # Receives JSON session data from Claude Code on stdin.
-# Reads Somnium injection state from ~/.claude/somnium/state/prompt_context.json.
+# Reads per-session Somnium state from ~/.claude/somnium/state/prompt_context_{session_id}.json.
 #
 # Output format (single line):
-#   Opus 4.6 (1M context) | $0.15 | Session: 23% (1h04m) | Weekly: 10% (3d04h) | Ctx: [ ▓▓▓▓░░░░░░░░ ] - 3 skills & 5 mem - 14.5k
+#   Opus 4.6 (1M context) | $0.15 | 23% (1h04m) | 10% (3d04h) | Ctx: [ ▓▓▓▓░░░░░░░░ ] - 3 skills & 5 mem - 14.5k
 
 set -euo pipefail
 
@@ -45,6 +45,7 @@ RATE_5H_PCT=$(jq_get '.rate_limits.five_hour.used_percentage // -1 | floor')
 RATE_5H_RESET=$(jq_get '.rate_limits.five_hour.resets_at // 0')
 RATE_7D_PCT=$(jq_get '.rate_limits.seven_day.used_percentage // -1 | floor')
 RATE_7D_RESET=$(jq_get '.rate_limits.seven_day.resets_at // 0')
+SESSION_ID=$(jq_get '.session_id // ""')
 
 # --- Model display (include context size for large models) ---
 CTX_MAX_K=$(( CTX_MAX / 1000 ))
@@ -112,7 +113,7 @@ SESSION_PART=""
 if [ "$RATE_5H_PCT" -ge 0 ]; then
     RESET_FMT=$(format_reset "$RATE_5H_RESET")
     COLOR=$(rate_color "$RATE_5H_PCT")
-    SESSION_PART="${DIM}Session:${RESET} ${COLOR}${RATE_5H_PCT}%${RESET} ${DIM}(${RESET_FMT})${RESET}"
+    SESSION_PART="${COLOR}${RATE_5H_PCT}%${RESET} ${DIM}(${RESET_FMT})${RESET}"
 fi
 
 # --- Weekly rate (7d) ---
@@ -120,7 +121,7 @@ WEEKLY_PART=""
 if [ "$RATE_7D_PCT" -ge 0 ]; then
     RESET_FMT=$(format_reset "$RATE_7D_RESET")
     COLOR=$(rate_color "$RATE_7D_PCT")
-    WEEKLY_PART="${DIM}Weekly:${RESET} ${COLOR}${RATE_7D_PCT}%${RESET} ${DIM}(${RESET_FMT})${RESET}"
+    WEEKLY_PART="${COLOR}${RATE_7D_PCT}%${RESET} ${DIM}(${RESET_FMT})${RESET}"
 fi
 
 # --- Context bar (12 chars wide, using ▓ and ░) ---
@@ -151,9 +152,14 @@ else
     TOKENS_FMT="${CURRENT_TOKENS}"
 fi
 
-# --- Somnium injection state ---
+# --- Somnium injection state (session-scoped) ---
 SOMNIUM_PART=""
-STATE_FILE="$HOME/.claude/somnium/state/prompt_context.json"
+STATE_DIR="$HOME/.claude/somnium/state"
+if [ -n "$SESSION_ID" ]; then
+    STATE_FILE="${STATE_DIR}/prompt_context_${SESSION_ID}.json"
+else
+    STATE_FILE="${STATE_DIR}/prompt_context.json"
+fi
 if [ -f "$STATE_FILE" ]; then
     S_SKILLS=$(jq -r '.n_skills // 0' "$STATE_FILE" 2>/dev/null || echo 0)
     S_MEM=$(jq -r '.n_memories // 0' "$STATE_FILE" 2>/dev/null || echo 0)
@@ -171,7 +177,7 @@ if [ -f "$STATE_FILE" ]; then
 fi
 
 # --- Assemble the line ---
-# Format: Model (Xk context) | $cost | Session: X% (Xh) | Weekly: X% (Xd) | Ctx: [ ▓▓░░ ] - X skills & Y mem - 14.5k
+# Format: Model (Xk context) | $cost | X% (Xh) | X% (Xd) | Ctx: [ ▓▓░░ ] - X skills & Y mem - 14.5k
 LINE="${MODEL_PART}"
 LINE+=" ${DIM}|${RESET} ${WHITE}${COST_FMT}${RESET}"
 

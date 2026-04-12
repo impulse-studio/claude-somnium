@@ -128,11 +128,20 @@ def _search_all(prompt: str, config: SomniumConfig, top_k: int, scopes: list[str
     return hits[:top_k]
 
 
+def _hit_title(hit: SearchHit) -> str:
+    """Extract a short human title from a search hit."""
+    if hit.heading_path:
+        return hit.heading_path[-1]
+    return Path(hit.file_path).stem
+
+
 def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     """Core logic. Returns a dict that maps to a hookSpecificOutput payload."""
     prompt = _extract_prompt(event)
     if not prompt:
         return {"skipped": "empty prompt"}
+
+    session_id = event.get("session_id") or ""
 
     cwd = event.get("cwd")
     project_root = find_project_root(Path(cwd)) if cwd else None
@@ -144,11 +153,11 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
     set_project(project_root.name if project_root else "global")
 
     if not config.context_injection.enabled:
-        return {"skipped": "context_injection disabled"}
+        return {"skipped": "context_injection disabled", "session_id": session_id}
 
     # Don't call Voyage if no API key is configured — just skip.
     if config.embeddings.resolve_api_key() is None:
-        return {"skipped": "no Voyage API key"}
+        return {"skipped": "no Voyage API key", "session_id": session_id}
 
     scopes = normalize_scopes(config.context_injection.scopes)
     hits = _search_all(
@@ -162,7 +171,7 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
         hits, budget_tokens=config.context_injection.context_budget_tokens
     )
     if n_included == 0:
-        return {"skipped": "no hits"}
+        return {"skipped": "no hits", "session_id": session_id}
 
     # Count skills vs memories from the included hits (first n_included).
     included_hits = hits[:n_included]
@@ -171,10 +180,12 @@ def handle_event(event: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "injected": True,
+        "session_id": session_id,
         "n_hits": n_included,
         "n_skills": n_skills,
         "n_memories": n_memories,
         "text": text,
+        "included_hits": included_hits,
     }
 
 
@@ -185,6 +196,8 @@ def main() -> None:
     except BaseException as exc:
         log_error(HOOK_NAME, exc)
         sys.exit(0)
+
+    session_id = result.get("session_id", "")
 
     # Emit structured output only if we have something to inject.
     if result.get("injected"):
@@ -203,42 +216,85 @@ def main() -> None:
             f"{result.get('n_memories', 0)} mem), "
             f"{len(result['text'])} chars",
         )
+        included_hits = result.get("included_hits") or []
         _write_state(
+            session_id=session_id,
             n_hits=result["n_hits"],
             n_skills=result.get("n_skills", 0),
             n_memories=result.get("n_memories", 0),
             chars=len(result["text"]),
+            hits=[
+                {
+                    "title": _hit_title(h),
+                    "scope": h.scope,
+                    "score": round(h.score, 3),
+                    "path": _short_path(h.file_path),
+                }
+                for h in included_hits
+            ],
         )
     else:
         log_info(HOOK_NAME, str(result))
-        _write_state(n_hits=0, n_skills=0, n_memories=0, chars=0)
+        _write_state(session_id=session_id, n_hits=0, n_skills=0, n_memories=0, chars=0, hits=[])
 
     sys.exit(0)
 
 
+STATE_DIR = Path.home() / ".claude" / "somnium" / "state"
+_STATE_MAX_AGE_SECONDS = 86400  # 24h — cleanup stale session files
+
+
+def _state_filename(session_id: str) -> str:
+    """Return the state filename for a session (or the legacy name)."""
+    if session_id:
+        return f"prompt_context_{session_id}.json"
+    return "prompt_context.json"
+
+
 def _write_state(
-    *, n_hits: int, n_skills: int, n_memories: int, chars: int
+    *,
+    session_id: str,
+    n_hits: int,
+    n_skills: int,
+    n_memories: int,
+    chars: int,
+    hits: list[dict[str, object]] | None = None,
 ) -> None:
-    """Write a small JSON file so the status line can show injection stats
-    without parsing the hooks log. Best-effort, non-fatal."""
+    """Write a per-session JSON state file so the status line and MCP debug
+    tool can show injection stats. Best-effort, non-fatal."""
     try:
         import datetime as dt
 
-        state_dir = Path.home() / ".claude" / "somnium" / "state"
-        state_dir.mkdir(parents=True, exist_ok=True)
-        state_path = state_dir / "prompt_context.json"
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        state_path = STATE_DIR / _state_filename(session_id)
         state_path.write_text(
             json.dumps(
                 {
+                    "session_id": session_id,
                     "n_hits": n_hits,
                     "n_skills": n_skills,
                     "n_memories": n_memories,
                     "chars": chars,
                     "timestamp": dt.datetime.now(tz=dt.UTC).isoformat(),
+                    "hits": hits or [],
                 }
             ),
             encoding="utf-8",
         )
+        _cleanup_old_state_files()
+    except Exception:  # noqa: S110
+        pass
+
+
+def _cleanup_old_state_files() -> None:
+    """Remove state files older than 24h to prevent buildup."""
+    import time
+
+    try:
+        now = time.time()
+        for path in STATE_DIR.glob("prompt_context_*.json"):
+            if now - path.stat().st_mtime > _STATE_MAX_AGE_SECONDS:
+                path.unlink(missing_ok=True)
     except Exception:  # noqa: S110
         pass
 

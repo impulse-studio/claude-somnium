@@ -135,3 +135,73 @@ def test_budget_truncates_low_priority_hits(seeded_cfg):
 def test_nested_prompt_key(seeded_cfg):
     result = hook.handle_event({"hookInput": {"prompt": "how do I push"}})
     assert result["injected"] is True
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped state
+# ---------------------------------------------------------------------------
+
+
+def test_session_id_propagated_in_result(seeded_cfg):
+    result = hook.handle_event({"prompt": "how do I push", "session_id": "abc-123"})
+    assert result["session_id"] == "abc-123"
+
+
+def test_session_id_empty_when_absent(seeded_cfg):
+    result = hook.handle_event({"prompt": "how do I push"})
+    assert result["session_id"] == ""
+
+
+def test_included_hits_in_result(seeded_cfg):
+    result = hook.handle_event({"prompt": "how do I push"})
+    assert result["injected"] is True
+    assert "included_hits" in result
+    assert len(result["included_hits"]) == result["n_hits"]
+
+
+def test_write_state_creates_session_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
+    hook._write_state(
+        session_id="sess-42",
+        n_hits=3,
+        n_skills=1,
+        n_memories=2,
+        chars=500,
+        hits=[{"title": "foo", "scope": "global", "score": 0.9, "path": "~/mem/foo.md"}],
+    )
+    state_file = tmp_path / "prompt_context_sess-42.json"
+    assert state_file.exists()
+    import json
+
+    data = json.loads(state_file.read_text())
+    assert data["session_id"] == "sess-42"
+    assert data["n_skills"] == 1
+    assert data["n_memories"] == 2
+    assert len(data["hits"]) == 1
+    assert data["hits"][0]["title"] == "foo"
+
+
+def test_write_state_fallback_without_session_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
+    hook._write_state(session_id="", n_hits=0, n_skills=0, n_memories=0, chars=0, hits=[])
+    assert (tmp_path / "prompt_context.json").exists()
+
+
+def test_cleanup_old_state_files(tmp_path, monkeypatch):
+    import time
+
+    monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
+    # Create an "old" file and a "new" file.
+    old = tmp_path / "prompt_context_old.json"
+    new = tmp_path / "prompt_context_new.json"
+    old.write_text("{}")
+    new.write_text("{}")
+    # Backdate the old file to 2 days ago.
+    old_time = time.time() - 2 * 86400
+    import os
+
+    os.utime(old, (old_time, old_time))
+
+    hook._cleanup_old_state_files()
+    assert not old.exists()
+    assert new.exists()

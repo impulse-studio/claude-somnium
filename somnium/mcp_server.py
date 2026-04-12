@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import frontmatter
@@ -220,6 +221,41 @@ def code_search_semantic(query: str, top_k: int = 5) -> str:
     config = get_config()
     hits = search_code(query, top_k=top_k, config=config)
     return json.dumps([h.to_dict() for h in hits], indent=2)
+
+
+@mcp.tool()
+def injection_debug(session_id: str = "") -> str:
+    """List the memories and skills injected in the current session's last prompt.
+
+    Args:
+      session_id: Claude Code session ID. If empty, reads the most
+                  recently modified state file.
+
+    Returns a JSON object with timestamp, counts, and the full hits
+    array (title, scope, score, path) for each injected item.
+    """
+    state_dir = Path.home() / ".claude" / "somnium" / "state"
+    state_file: Path | None = None
+
+    if session_id:
+        candidate = state_dir / f"prompt_context_{session_id}.json"
+        if candidate.exists():
+            state_file = candidate
+    else:
+        # Find most recently modified state file.
+        candidates = sorted(
+            state_dir.glob("prompt_context_*.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        ) if state_dir.exists() else []
+        if candidates:
+            state_file = candidates[0]
+
+    if not state_file or not state_file.exists():
+        return json.dumps({"error": "No injection state found. No memories were injected yet."})
+
+    data = json.loads(state_file.read_text(encoding="utf-8"))
+    return json.dumps(data, indent=2)
 
 
 @mcp.tool()

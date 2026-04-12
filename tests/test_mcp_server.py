@@ -259,3 +259,73 @@ def test_code_search_semantic_returns_empty_without_index(mcp_sandbox):
     raw = mcp_server.code_search_semantic(query="auth", top_k=5)
     parsed = json.loads(raw)
     assert parsed == []
+
+
+# ---------------------------------------------------------------------------
+# injection_debug
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def injection_state_dir(tmp_path, monkeypatch):
+    """Set up a fake HOME so injection_debug reads from tmp_path."""
+    fake_home = tmp_path / "fakehome"
+    state_dir = fake_home / ".claude" / "somnium" / "state"
+    state_dir.mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: fake_home))
+    return state_dir
+
+
+def test_injection_debug_reads_session_state(injection_state_dir):
+    from somnium import mcp_server
+
+    state_file = injection_state_dir / "prompt_context_sess-99.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "session_id": "sess-99",
+                "n_hits": 2,
+                "n_skills": 1,
+                "n_memories": 1,
+                "chars": 300,
+                "timestamp": "2026-04-12T00:00:00+00:00",
+                "hits": [
+                    {"title": "Git workflow", "scope": "global", "score": 0.9, "path": "~/mem/git.md"},
+                    {"title": "API routes", "scope": "skill_project", "score": 0.8, "path": "~/skills/api.md"},
+                ],
+            }
+        )
+    )
+
+    raw = mcp_server.injection_debug(session_id="sess-99")
+    data = json.loads(raw)
+    assert data["session_id"] == "sess-99"
+    assert data["n_hits"] == 2
+    assert len(data["hits"]) == 2
+    assert data["hits"][0]["title"] == "Git workflow"
+
+
+def test_injection_debug_finds_most_recent_without_session_id(injection_state_dir):
+    import os
+    import time
+
+    from somnium import mcp_server
+
+    old = injection_state_dir / "prompt_context_old.json"
+    new = injection_state_dir / "prompt_context_new.json"
+    old.write_text(json.dumps({"session_id": "old", "n_hits": 0, "hits": []}))
+    new.write_text(json.dumps({"session_id": "new", "n_hits": 1, "hits": [{"title": "x"}]}))
+
+    os.utime(old, (time.time() - 600, time.time() - 600))
+
+    raw = mcp_server.injection_debug(session_id="")
+    data = json.loads(raw)
+    assert data["session_id"] == "new"
+
+
+def test_injection_debug_returns_error_when_no_state(injection_state_dir):
+    from somnium import mcp_server
+
+    raw = mcp_server.injection_debug(session_id="nonexistent")
+    data = json.loads(raw)
+    assert "error" in data
