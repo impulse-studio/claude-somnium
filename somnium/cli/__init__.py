@@ -7,6 +7,8 @@ The ``app`` object is the top-level Typer instance registered as the
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -24,6 +26,24 @@ console = Console()
 
 
 # --- Shared helpers used by several submodules ---------------------------
+
+
+def ensure_gitattributes(project_root: Path) -> bool:
+    """Ensure .gitattributes has the parquet merge driver line.
+
+    Returns True if the file was created or modified, False if already up to date.
+    Silent — callers decide whether to print.
+    """
+    gitattributes = project_root / ".gitattributes"
+    pattern_line = "*.parquet merge=somnium-cache"
+    if gitattributes.exists():
+        content = gitattributes.read_text(encoding="utf-8")
+        if pattern_line in content:
+            return False
+        gitattributes.write_text(content.rstrip() + "\n" + pattern_line + "\n", encoding="utf-8")
+    else:
+        gitattributes.write_text(pattern_line + "\n", encoding="utf-8")
+    return True
 
 
 def global_store(embedding_dim: int = 1024) -> ParquetStore:

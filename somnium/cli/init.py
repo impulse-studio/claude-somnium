@@ -10,7 +10,7 @@ import typer
 
 from ..config import load_config, reset_config_cache
 from ..hooks.install import install_hooks
-from . import app, console
+from . import app, console, ensure_gitattributes
 
 
 @app.command()
@@ -118,16 +118,8 @@ def _setup_merge_driver() -> None:
 
     # Ensure .gitattributes exists in the current project
     cwd = Path.cwd().resolve()
-    gitattributes = cwd / ".gitattributes"
-    pattern_line = "*.parquet merge=somnium-cache"
-    if gitattributes.exists():
-        content = gitattributes.read_text(encoding="utf-8")
-        if pattern_line not in content:
-            gitattributes.write_text(content.rstrip() + "\n" + pattern_line + "\n", encoding="utf-8")
-            console.print(f"[green]✓[/] added merge driver to [cyan]{gitattributes}[/]")
-    else:
-        gitattributes.write_text(pattern_line + "\n", encoding="utf-8")
-        console.print(f"[green]✓[/] created [cyan]{gitattributes}[/] with merge driver")
+    if ensure_gitattributes(cwd):
+        console.print(f"[green]✓[/] ensured merge driver in [cyan]{cwd / '.gitattributes'}[/]")
 
 
 def _print_next_steps() -> None:

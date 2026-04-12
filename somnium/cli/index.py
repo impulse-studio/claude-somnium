@@ -10,7 +10,7 @@ from ..config import get_config, reset_config_cache
 from ..cost import set_project
 from ..indexer import index_directory
 from ..storage.parquet_store import ParquetStore
-from . import app, console, global_store
+from . import app, console, ensure_gitattributes, global_store
 
 if TYPE_CHECKING:
     from ..config import SomniumConfig
@@ -96,6 +96,9 @@ def _index_global(cfg: SomniumConfig) -> None:
 def _index_project(cfg: SomniumConfig) -> None:
     assert cfg.project_memory_dir is not None  # noqa: S101
     assert cfg.project_index_path is not None  # noqa: S101
+    assert cfg.project_root is not None  # noqa: S101
+    if ensure_gitattributes(cfg.project_root):
+        console.print("[green]✓[/] updated [cyan].gitattributes[/] with parquet merge driver")
     console.print(
         f"[bold]Indexing project memories[/] at [cyan]{cfg.project_memory_dir}[/]"
     )
