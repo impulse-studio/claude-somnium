@@ -26,6 +26,10 @@ Everything Somnium ships today.
   sub-agent reads the session transcript, classifies what's worth
   keeping, and writes memories + `CLAUDE.md` patches.
 
+- **Memory consolidation.** The dream agent can merge related
+  memories and delete obsolete ones, not just create/update. Keeps
+  memory count manageable as a project grows.
+
 - **Heuristic gate.** Skips trivial sessions (short Q&A, single
   commits) so you don't burn tokens on nothing.
 

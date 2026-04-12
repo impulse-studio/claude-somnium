@@ -44,6 +44,21 @@ def test_schema_item_has_required_fields():
     assert "tags" in item["properties"]
 
 
+def test_schema_item_has_action_field():
+    item = DREAM_OUTPUT_SCHEMA["properties"]["items"]["items"]
+    assert "action" in item["properties"]
+    assert item["properties"]["action"]["enum"] == ["write", "merge", "delete"]
+    # action is optional — not in required
+    assert "action" not in item["required"]
+
+
+def test_schema_item_has_merge_sources_field():
+    item = DREAM_OUTPUT_SCHEMA["properties"]["items"]["items"]
+    assert "merge_sources" in item["properties"]
+    assert item["properties"]["merge_sources"]["type"] == "array"
+    assert "merge_sources" not in item["required"]
+
+
 def test_schema_disallows_additional_properties():
     """Strict: no extra fields allowed at root or item level."""
     assert DREAM_OUTPUT_SCHEMA["additionalProperties"] is False
@@ -80,6 +95,12 @@ def test_system_prompt_does_not_mention_global_skill():
 def test_system_prompt_includes_dedup_instruction():
     assert "REUSE" in DREAM_SYSTEM_PROMPT or "reuse" in DREAM_SYSTEM_PROMPT
     assert "character-for-character" in DREAM_SYSTEM_PROMPT
+
+
+def test_system_prompt_mentions_merge_delete():
+    assert "merge" in DREAM_SYSTEM_PROMPT.lower()
+    assert "delete" in DREAM_SYSTEM_PROMPT.lower()
+    assert "merge_sources" in DREAM_SYSTEM_PROMPT
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +156,46 @@ def test_build_user_prompt_includes_transcript_verbatim():
     )
     assert "big important question" in text
     assert "## USER" in text
+
+
+def test_build_user_prompt_includes_memory_counts():
+    text = build_user_prompt(
+        transcript_markdown="x",
+        project_root="/repo",
+        global_memory_titles=[f"g{i}" for i in range(5)],
+        project_memory_titles=[f"p{i}" for i in range(35)],
+        existing_skills=[],
+    )
+    assert "5 global" in text
+    assert "35 project" in text
+    # High project count triggers merge hint
+    assert "aggressively merge" in text.lower()
+
+
+def test_build_user_prompt_no_merge_hint_for_high_global_count():
+    """Global memories don't trigger the merge hint — only project ones do."""
+    text = build_user_prompt(
+        transcript_markdown="x",
+        project_root="/repo",
+        global_memory_titles=[f"g{i}" for i in range(50)],
+        project_memory_titles=[f"p{i}" for i in range(3)],
+        existing_skills=[],
+    )
+    assert "50 global" in text
+    assert "3 project" in text
+    assert "aggressively merge" not in text.lower()
+
+
+def test_build_user_prompt_no_merge_hint_when_low_count():
+    text = build_user_prompt(
+        transcript_markdown="x",
+        project_root="/repo",
+        global_memory_titles=["a", "b"],
+        project_memory_titles=["c"],
+        existing_skills=[],
+    )
+    assert "2 global" in text
+    assert "aggressively merge" not in text.lower()
 
 
 def test_build_user_prompt_uses_named_keyword_args():

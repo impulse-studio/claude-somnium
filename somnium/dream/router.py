@@ -45,7 +45,7 @@ class WriteRecord:
     category: str
     title: str
     path: str
-    status: str  # "written", "appended", "skipped", "error"
+    status: str  # written | appended | skipped | error | merged | deleted | merge_source_deleted
     reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -240,19 +240,269 @@ def _reindex_file(path: Path, kind: str, config: SomniumConfig) -> None:
         pass
 
 
+def _deindex_file(path: Path, kind: str, config: SomniumConfig) -> None:
+    """Remove a file from the vector store. Non-fatal on error."""
+    if kind in {"memory_global", "skill_global"}:
+        store_path = config.global_index_path
+    elif kind in {"memory_project", "skill_project"}:
+        if not config.project_index_path:
+            return
+        store_path = config.project_index_path
+    else:
+        return
+
+    try:
+        with ParquetStore(store_path) as store:
+            store.delete_file(str(path.resolve()))
+    except Exception:  # noqa: S110
+        pass
+
+
+def _find_file_by_title(title: str, directory: Path) -> Path | None:
+    """Find a memory .md file by its H1 title.
+
+    Resolution order:
+      1. Exact slug match (title → slug → file)
+      2. Fuzzy slug match (Levenshtein ≤ 3)
+      3. H1 content scan (read each file, compare H1)
+    """
+    if not directory.exists():
+        return None
+
+    slug = _slugify(title)
+    exact = directory / f"{slug}.md"
+    if exact.exists():
+        return exact
+
+    fuzzy_slug = _find_similar_slug(slug, directory)
+    if fuzzy_slug != slug:
+        fuzzy_path = directory / f"{fuzzy_slug}.md"
+        if fuzzy_path.exists():
+            return fuzzy_path
+
+    for path in directory.glob("*.md"):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+            h1 = re.search(r"^#\s+(.+?)\s*$", text, re.MULTILINE)
+            if h1 and h1.group(1).strip() == title:
+                return path
+        except Exception:  # noqa: S110
+            continue
+
+    return None
+
+
+def _delete_memory_file(
+    *,
+    title: str,
+    directory: Path,
+    kind: str,
+    config: SomniumConfig,
+) -> WriteRecord:
+    """Delete a memory file from disk and remove it from the vector index."""
+    path = _find_file_by_title(title, directory)
+    if path is None:
+        return WriteRecord(
+            category=kind,
+            title=title,
+            path="",
+            status="skipped",
+            reason=f"file not found for title: {title!r}",
+        )
+
+    abs_path = str(path.resolve())
+
+    try:
+        _deindex_file(path, kind, config)
+    except Exception:  # noqa: S110
+        pass
+
+    try:
+        path.unlink()
+    except Exception as exc:
+        return WriteRecord(
+            category=kind,
+            title=title,
+            path=abs_path,
+            status="error",
+            reason=f"failed to delete: {exc}",
+        )
+
+    return WriteRecord(
+        category=kind,
+        title=title,
+        path=abs_path,
+        status="deleted",
+    )
+
+
+_MEMORY_CATEGORIES = {"global_memory", "project_memory"}
+_MAX_PROJECT_MERGE_DELETE = 5
+
+
+def _resolve_memory_dir_and_kind(
+    category: str, config: SomniumConfig
+) -> tuple[Path | None, str]:
+    """Return (target_dir, kind) for a memory category."""
+    if category == "global_memory":
+        return config.global_memory_dir, "memory_global"
+    if category == "project_memory":
+        return (config.project_memory_dir, "memory_project")
+    return None, ""
+
+
+def _handle_merge(
+    *,
+    item: dict[str, Any],
+    config: SomniumConfig,
+) -> list[WriteRecord]:
+    """Handle a merge action: write merged file, then delete sources."""
+    records: list[WriteRecord] = []
+    category = item.get("category", "")
+    title = item.get("title", "").strip()
+    content = item.get("content", "").strip()
+    tags = item.get("tags") or []
+    merge_sources = item.get("merge_sources") or []
+
+    if not title or not content:
+        records.append(WriteRecord(
+            category=category, title=title, path="",
+            status="skipped", reason="merge: missing title or content",
+        ))
+        return records
+
+    if not merge_sources:
+        records.append(WriteRecord(
+            category=category, title=title, path="",
+            status="skipped", reason="merge: no merge_sources provided",
+        ))
+        return records
+
+    if category not in _MEMORY_CATEGORIES:
+        records.append(WriteRecord(
+            category=category, title=title, path="",
+            status="skipped",
+            reason=f"merge not supported for category: {category!r}",
+        ))
+        return records
+
+    target_dir, kind = _resolve_memory_dir_and_kind(category, config)
+    if target_dir is None:
+        records.append(WriteRecord(
+            category=category, title=title, path="",
+            status="skipped", reason="no project detected",
+        ))
+        return records
+
+    # Step 1: Write the merged file
+    path = _write_memory_md(
+        target_dir=target_dir,
+        title=title,
+        content=content,
+        category=category,
+        tags=tags,
+    )
+    _reindex_file(path, kind, config)
+    records.append(WriteRecord(category, title, str(path), "merged"))
+
+    # Step 2: Delete each source file (skip if same as merged file)
+    for source_title in merge_sources:
+        source_path = _find_file_by_title(source_title, target_dir)
+        if source_path is None:
+            records.append(WriteRecord(
+                category=category, title=source_title, path="",
+                status="skipped",
+                reason=f"merge source not found: {source_title!r}",
+            ))
+            continue
+
+        if source_path.resolve() == path.resolve():
+            continue
+
+        try:
+            _deindex_file(source_path, kind, config)
+            source_path.unlink()
+            records.append(WriteRecord(
+                category=category, title=source_title,
+                path=str(source_path), status="merge_source_deleted",
+            ))
+        except Exception as exc:
+            records.append(WriteRecord(
+                category=category, title=source_title,
+                path=str(source_path), status="error",
+                reason=f"failed to delete merge source: {exc}",
+            ))
+
+    return records
+
+
 def dispatch(
     items: list[dict[str, Any]],
     config: SomniumConfig,
 ) -> list[WriteRecord]:
     """Write all items and return per-item records."""
     records: list[WriteRecord] = []
+    project_merge_delete_count = 0
 
     for item in items:
         category = item.get("category", "")
         title = item.get("title", "").strip()
         content = item.get("content", "").strip()
         tags = item.get("tags") or []
+        action = item.get("action", "write")
+        is_project = category == "project_memory"
 
+        # --- Handle merge action ---
+        if action == "merge":
+            if is_project and project_merge_delete_count >= _MAX_PROJECT_MERGE_DELETE:
+                records.append(WriteRecord(
+                    category=category, title=title, path="",
+                    status="skipped",
+                    reason=f"project merge/delete limit ({_MAX_PROJECT_MERGE_DELETE}) reached",
+                ))
+                continue
+            if is_project:
+                project_merge_delete_count += 1
+            records.extend(_handle_merge(item=item, config=config))
+            continue
+
+        # --- Handle delete action ---
+        if action == "delete":
+            if is_project and project_merge_delete_count >= _MAX_PROJECT_MERGE_DELETE:
+                records.append(WriteRecord(
+                    category=category, title=title, path="",
+                    status="skipped",
+                    reason=f"project merge/delete limit ({_MAX_PROJECT_MERGE_DELETE}) reached",
+                ))
+                continue
+            if is_project:
+                project_merge_delete_count += 1
+
+            if category not in _MEMORY_CATEGORIES:
+                records.append(WriteRecord(
+                    category=category, title=title, path="",
+                    status="skipped",
+                    reason=f"delete not supported for category: {category!r}",
+                ))
+                continue
+
+            target_dir, kind = _resolve_memory_dir_and_kind(category, config)
+            if target_dir is None:
+                records.append(WriteRecord(
+                    category=category, title=title, path="",
+                    status="skipped", reason="no project detected",
+                ))
+                continue
+
+            records.append(_delete_memory_file(
+                title=title, directory=target_dir,
+                kind=kind, config=config,
+            ))
+            continue
+
+        # --- Handle write action (default, existing behavior) ---
         if not title or not content:
             records.append(
                 WriteRecord(
@@ -307,11 +557,6 @@ def dispatch(
                 )
 
             elif category == "global_skill":
-                # global_skill is no longer a supported category. Skills
-                # only make sense scoped to a project — generic
-                # procedural knowledge belongs in global_memory instead.
-                # If the dream agent emits one despite the schema, we
-                # downgrade it to a skipped record with a clear reason.
                 records.append(
                     WriteRecord(
                         category=category,

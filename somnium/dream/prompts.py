@@ -43,6 +43,15 @@ DREAM_OUTPUT_SCHEMA: dict = {
                             "claude_md_patch",
                         ],
                     },
+                    "action": {
+                        "type": "string",
+                        "enum": ["write", "merge", "delete"],
+                        "description": (
+                            "Action to perform. 'write' (default) creates or "
+                            "updates. 'merge' consolidates merge_sources into "
+                            "one memory. 'delete' removes an obsolete memory."
+                        ),
+                    },
                     "title": {
                         "type": "string",
                         "description": "Short human-readable title. Becomes filename slug.",
@@ -59,6 +68,14 @@ DREAM_OUTPUT_SCHEMA: dict = {
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Optional tags to put in frontmatter.",
+                    },
+                    "merge_sources": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Titles of existing memories to delete after merge. "
+                            "Required when action='merge', ignored otherwise."
+                        ),
                     },
                 },
             },
@@ -169,6 +186,50 @@ Concrete examples:
 
 NEVER pluralize, rephrase, or "make titles clearer". Character-for-
 character match is the only thing that triggers an update.
+
+## Memory maintenance: merge and delete
+
+Beyond writing and updating, you can MERGE and DELETE memories. Use
+the `action` field on items — it defaults to `"write"` if omitted.
+
+### Merging related memories
+
+If you see two or more existing titles that cover overlapping or related
+topics, emit ONE item with:
+  - `"action": "merge"`
+  - `"title"`: the best title for the consolidated memory
+  - `"content"`: the FULL merged content (all knowledge combined)
+  - `"merge_sources"`: array of the EXACT existing titles (character-for-
+    character) to delete after the merged file is written
+
+Example: existing "GitHub repo URL", "GitHub repo branches", "GitHub
+default branch" → one merge item titled "GitHub repository overview"
+with all three facts, and `merge_sources` listing the three old titles.
+
+### Deleting obsolete memories
+
+If an existing memory is clearly outdated, wrong, or superseded, emit:
+  - `"action": "delete"`
+  - `"title"`: the EXACT title of the memory to remove
+  - `"content"`: brief reason why it's obsolete
+  - `"category"`: the scope where the memory lives
+
+Example: "Project has 3 commits" when the project now has 50+.
+
+### Merge/delete rules
+
+- Only memories (global_memory, project_memory) can be merged or deleted.
+  Skills and claude_md_patches cannot.
+- Only merge within the SAME scope — never across global/project.
+- **Global memories have NO merge/delete limit.** Claude is versatile and
+  global knowledge doesn't clutter any single project, so there is no
+  urgency to consolidate. Only merge globals when they are truly redundant.
+- **Project memories: maximum 5 merge + delete operations per session.**
+  Project scopes are more focused, so keep them tidy.
+- Prefer UPDATING (reuse title, emit consolidated content) over merging.
+  Merge when N distinct files clearly belong in one.
+- When project memory counts are high (30+), aggressively merge related
+  project memories.
 """
 
 
@@ -197,10 +258,20 @@ def build_user_prompt(
             out += f"\n  - … and {len(items) - limit} more"
         return out
 
+    global_count = len(global_memory_titles)
+    project_count = len(project_memory_titles)
+    merge_hint = ""
+    if project_count >= 30:
+        merge_hint = (
+            "\n- WARNING: project memory count is high. Aggressively merge "
+            "related project memories to keep the total manageable."
+        )
+
     return f"""\
 # Session context
 
 - Project root: {project_line}
+- Memory counts: {global_count} global, {project_count} project{merge_hint}
 
 - Existing global memory titles (REUSE these character-for-character
   if your fact overlaps — that overwrites the file in place):
@@ -218,7 +289,9 @@ def build_user_prompt(
 
 # Task
 
-Extract anything worth persisting. Respond with the JSON object only.
+Extract anything worth persisting. If existing memories are redundant
+or obsolete, use merge/delete actions to clean them up.
+Respond with the JSON object only.
 """
 
 

@@ -247,6 +247,258 @@ def test_dispatch_overwrite_preserves_created_at(sandbox_cfg):
     assert "v1" not in second_text
 
 
+# ---------------------------------------------------------------------------
+# merge / delete actions
+# ---------------------------------------------------------------------------
+
+
+def _write_fake_memory(directory: Path, title: str, content: str) -> Path:
+    """Write a minimal memory .md file for testing."""
+    from somnium.dream.router import _slugify
+
+    directory.mkdir(parents=True, exist_ok=True)
+    slug = _slugify(title)
+    target = directory / f"{slug}.md"
+    target.write_text(
+        f"---\ncreated_at: 2026-01-01T00:00:00\ncategory: test\n---\n\n# {title}\n\n{content}\n",
+        encoding="utf-8",
+    )
+    return target
+
+
+def test_dispatch_delete_global_memory(sandbox_cfg):
+    _write_fake_memory(sandbox_cfg.global_memory_dir, "Old fact", "outdated info")
+    records = dispatch(
+        [{"category": "global_memory", "title": "Old fact",
+          "content": "obsolete", "rationale": "outdated", "action": "delete"}],
+        sandbox_cfg,
+    )
+    assert any(r.status == "deleted" for r in records)
+    assert not (sandbox_cfg.global_memory_dir / "old-fact.md").exists()
+
+
+def test_dispatch_delete_nonexistent_is_skipped(sandbox_cfg):
+    records = dispatch(
+        [{"category": "global_memory", "title": "Does not exist",
+          "content": "x", "rationale": "x", "action": "delete"}],
+        sandbox_cfg,
+    )
+    assert records[0].status == "skipped"
+    assert "not found" in records[0].reason
+
+
+def test_dispatch_delete_project_memory(sandbox_cfg):
+    _write_fake_memory(sandbox_cfg.project_memory_dir, "Stale note", "old")
+    records = dispatch(
+        [{"category": "project_memory", "title": "Stale note",
+          "content": "x", "rationale": "x", "action": "delete"}],
+        sandbox_cfg,
+    )
+    assert any(r.status == "deleted" for r in records)
+    assert not (sandbox_cfg.project_memory_dir / "stale-note.md").exists()
+
+
+def test_dispatch_delete_skill_is_rejected(sandbox_cfg):
+    records = dispatch(
+        [{"category": "project_skill", "title": "Some skill",
+          "content": "x", "rationale": "x", "action": "delete"}],
+        sandbox_cfg,
+    )
+    assert records[0].status == "skipped"
+    assert "not supported" in records[0].reason
+
+
+def test_dispatch_merge_consolidates_files(sandbox_cfg):
+    mem_dir = sandbox_cfg.global_memory_dir
+    _write_fake_memory(mem_dir, "Topic alpha", "alpha content")
+    _write_fake_memory(mem_dir, "Topic beta", "beta content")
+    _write_fake_memory(mem_dir, "Topic gamma", "gamma content")
+
+    records = dispatch(
+        [{
+            "category": "global_memory",
+            "action": "merge",
+            "title": "Combined topic",
+            "content": "alpha + beta + gamma consolidated",
+            "rationale": "consolidation",
+            "merge_sources": ["Topic alpha", "Topic beta", "Topic gamma"],
+        }],
+        sandbox_cfg,
+    )
+
+    merged = [r for r in records if r.status == "merged"]
+    deleted = [r for r in records if r.status == "merge_source_deleted"]
+    assert len(merged) == 1
+    assert len(deleted) == 3
+
+    # Merged file exists with new content
+    merged_path = Path(merged[0].path)
+    assert merged_path.exists()
+    assert "consolidated" in merged_path.read_text()
+
+    # Source files are gone
+    assert not (mem_dir / "topic-alpha.md").exists()
+    assert not (mem_dir / "topic-beta.md").exists()
+    assert not (mem_dir / "topic-gamma.md").exists()
+
+
+def test_dispatch_merge_preserves_self_reference(sandbox_cfg):
+    """When a merge_source has the same slug as the merged title, don't delete it."""
+    mem_dir = sandbox_cfg.global_memory_dir
+    _write_fake_memory(mem_dir, "Keep this title", "old content")
+    _write_fake_memory(mem_dir, "Other memory", "other content")
+
+    records = dispatch(
+        [{
+            "category": "global_memory",
+            "action": "merge",
+            "title": "Keep this title",
+            "content": "merged content",
+            "rationale": "consolidation",
+            "merge_sources": ["Keep this title", "Other memory"],
+        }],
+        sandbox_cfg,
+    )
+
+    merged = [r for r in records if r.status == "merged"]
+    deleted = [r for r in records if r.status == "merge_source_deleted"]
+    assert len(merged) == 1
+    assert len(deleted) == 1  # only "Other memory" deleted, not self
+
+    # Merged file has new content
+    assert "merged content" in Path(merged[0].path).read_text()
+    assert not (mem_dir / "other-memory.md").exists()
+
+
+def test_dispatch_merge_missing_source_skips(sandbox_cfg):
+    mem_dir = sandbox_cfg.global_memory_dir
+    _write_fake_memory(mem_dir, "Real file", "real content")
+
+    records = dispatch(
+        [{
+            "category": "global_memory",
+            "action": "merge",
+            "title": "Combined",
+            "content": "merged",
+            "rationale": "r",
+            "merge_sources": ["Real file", "Ghost file"],
+        }],
+        sandbox_cfg,
+    )
+
+    merged = [r for r in records if r.status == "merged"]
+    deleted = [r for r in records if r.status == "merge_source_deleted"]
+    skipped = [r for r in records if r.status == "skipped"]
+    assert len(merged) == 1
+    assert len(deleted) == 1
+    assert len(skipped) == 1
+    assert "not found" in skipped[0].reason
+
+
+def test_dispatch_merge_no_sources_is_skipped(sandbox_cfg):
+    records = dispatch(
+        [{
+            "category": "global_memory",
+            "action": "merge",
+            "title": "X",
+            "content": "x",
+            "rationale": "r",
+            "merge_sources": [],
+        }],
+        sandbox_cfg,
+    )
+    assert records[0].status == "skipped"
+    assert "no merge_sources" in records[0].reason
+
+
+def test_dispatch_merge_non_memory_rejected(sandbox_cfg):
+    records = dispatch(
+        [{
+            "category": "project_skill",
+            "action": "merge",
+            "title": "X",
+            "content": "x",
+            "rationale": "r",
+            "merge_sources": ["A", "B"],
+        }],
+        sandbox_cfg,
+    )
+    assert records[0].status == "skipped"
+    assert "not supported" in records[0].reason
+
+
+def test_dispatch_action_defaults_to_write(sandbox_cfg):
+    """Items without an action field default to write (backwards compat)."""
+    records = dispatch(
+        [{"category": "global_memory", "title": "Plain write",
+          "content": "no action field", "rationale": "r"}],
+        sandbox_cfg,
+    )
+    assert records[0].status == "written"
+    assert Path(records[0].path).exists()
+
+
+def test_dispatch_merge_delete_limit_project(sandbox_cfg):
+    """Project memories have a cap of 5 merge/delete per session."""
+    mem_dir = sandbox_cfg.project_memory_dir
+    for i in range(7):
+        _write_fake_memory(mem_dir, f"Delete target {i}", f"content {i}")
+
+    items = [
+        {"category": "project_memory", "action": "delete",
+         "title": f"Delete target {i}", "content": "x", "rationale": "x"}
+        for i in range(7)
+    ]
+    records = dispatch(items, sandbox_cfg)
+
+    deleted = [r for r in records if r.status == "deleted"]
+    skipped = [r for r in records if r.status == "skipped"]
+    assert len(deleted) == 5  # cap of 5
+    assert len(skipped) == 2  # 6th and 7th
+    assert all("limit" in r.reason for r in skipped)
+
+
+def test_dispatch_global_memory_no_merge_delete_limit(sandbox_cfg):
+    """Global memories have NO merge/delete limit."""
+    mem_dir = sandbox_cfg.global_memory_dir
+    for i in range(7):
+        _write_fake_memory(mem_dir, f"Global target {i}", f"content {i}")
+
+    items = [
+        {"category": "global_memory", "action": "delete",
+         "title": f"Global target {i}", "content": "x", "rationale": "x"}
+        for i in range(7)
+    ]
+    records = dispatch(items, sandbox_cfg)
+
+    deleted = [r for r in records if r.status == "deleted"]
+    skipped = [r for r in records if r.status == "skipped"]
+    assert len(deleted) == 7  # no cap for global
+    assert len(skipped) == 0
+
+
+def test_dispatch_merge_project_memory(sandbox_cfg):
+    mem_dir = sandbox_cfg.project_memory_dir
+    _write_fake_memory(mem_dir, "Proj note A", "content A")
+    _write_fake_memory(mem_dir, "Proj note B", "content B")
+
+    records = dispatch(
+        [{
+            "category": "project_memory",
+            "action": "merge",
+            "title": "Proj combined",
+            "content": "A + B",
+            "rationale": "consolidation",
+            "merge_sources": ["Proj note A", "Proj note B"],
+        }],
+        sandbox_cfg,
+    )
+    merged = [r for r in records if r.status == "merged"]
+    deleted = [r for r in records if r.status == "merge_source_deleted"]
+    assert len(merged) == 1
+    assert len(deleted) == 2
+
+
 def test_dispatch_claude_md_patch_appends_to_existing(sandbox_cfg):
     claude_md = sandbox_cfg.project_root / "CLAUDE.md"
     claude_md.write_text("# Project rules\n\n- Rule A\n", encoding="utf-8")
