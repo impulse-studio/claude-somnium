@@ -262,6 +262,7 @@ class VectorStore:
         query_embedding: list[float],
         top_k: int = 5,
         scopes: list[str] | None = None,
+        tags: list[str] | None = None,
     ) -> list[SearchHit]:
         """Brute-force cosine similarity search.
 
@@ -273,12 +274,19 @@ class VectorStore:
                 f"Query embedding dim {len(query_embedding)} != {self.embedding_dim}"
             )
 
-        where_sql = ""
+        conditions: list[str] = []
         params: list = [query_embedding]
         if scopes:
             placeholders = ",".join(["?"] * len(scopes))
-            where_sql = f"WHERE scope IN ({placeholders})"
+            conditions.append(f"scope IN ({placeholders})")
             params.extend(scopes)
+        if tags:
+            # tags column is a JSON array string, e.g. '["python", "git"]'.
+            # Match rows that contain at least one of the requested tags.
+            tag_clauses = " OR ".join(["tags LIKE ?"] * len(tags))
+            conditions.append(f"({tag_clauses})")
+            params.extend(f"%{t}%" for t in tags)
+        where_sql = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         params.append(top_k)
 
         sql = f"""

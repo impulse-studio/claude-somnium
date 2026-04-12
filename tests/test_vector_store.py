@@ -182,3 +182,67 @@ def test_scope_filter_in_search(tmp_path: Path) -> None:
     assert len(both_hits) == 2
 
     store.close()
+
+
+def test_tags_filter_in_search(tmp_path: Path) -> None:
+    db = tmp_path / "t.duckdb"
+    store = VectorStore(db, embedding_dim=4)
+
+    file_a = tmp_path / "a.md"
+    file_b = tmp_path / "b.md"
+    file_c = tmp_path / "c.md"
+    store.upsert_chunks(
+        file_path=str(file_a),
+        file_hash="ha",
+        scope="global",
+        chunks=[_make_chunk(file_a, 0, "python tips", "ha")],
+        embeddings=[[1.0, 0.0, 0.0, 0.0]],
+        tags=["python", "tips"],
+    )
+    store.upsert_chunks(
+        file_path=str(file_b),
+        file_hash="hb",
+        scope="global",
+        chunks=[_make_chunk(file_b, 0, "git workflow", "hb")],
+        embeddings=[[1.0, 0.0, 0.0, 0.0]],
+        tags=["git"],
+    )
+    store.upsert_chunks(
+        file_path=str(file_c),
+        file_hash="hc",
+        scope="global",
+        chunks=[_make_chunk(file_c, 0, "no tags here", "hc")],
+        embeddings=[[1.0, 0.0, 0.0, 0.0]],
+    )
+
+    # Filter by single tag
+    python_hits = store.search([1.0, 0.0, 0.0, 0.0], top_k=5, tags=["python"])
+    assert len(python_hits) == 1
+    assert "python tips" in python_hits[0].text
+
+    # Filter by multiple tags (OR logic)
+    multi_hits = store.search([1.0, 0.0, 0.0, 0.0], top_k=5, tags=["python", "git"])
+    assert len(multi_hits) == 2
+
+    # Filter by non-existent tag
+    empty = store.search([1.0, 0.0, 0.0, 0.0], top_k=5, tags=["rust"])
+    assert len(empty) == 0
+
+    # No tag filter returns all
+    all_hits = store.search([1.0, 0.0, 0.0, 0.0], top_k=5)
+    assert len(all_hits) == 3
+
+    # Combine scope + tag filters
+    store.upsert_chunks(
+        file_path=str(tmp_path / "d.md"),
+        file_hash="hd",
+        scope="project",
+        chunks=[_make_chunk(tmp_path / "d.md", 0, "project python", "hd")],
+        embeddings=[[1.0, 0.0, 0.0, 0.0]],
+        tags=["python"],
+    )
+    scoped = store.search([1.0, 0.0, 0.0, 0.0], top_k=5, scopes=["global"], tags=["python"])
+    assert len(scoped) == 1
+    assert scoped[0].scope == "global"
+
+    store.close()

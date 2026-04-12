@@ -197,6 +197,26 @@ def test_memory_search_returns_json_array(mcp_sandbox):
         assert "scope" in hits[0]
 
 
+def test_memory_search_filters_by_tags(mcp_sandbox):
+    _, mcp_server = mcp_sandbox
+    mcp_server.memory_write(content="python tips and tricks", scope="global", title="python-best-practices", tags=["python"])
+    mcp_server.memory_write(content="git workflow guide", scope="global", title="git-branching-strategy", tags=["git"])
+    mcp_server.memory_write(content="general notes without tags", scope="global", title="untagged-general-notes")
+
+    # Filter by tag
+    hits = json.loads(mcp_server.memory_search(query="tips", tags=["python"]))
+    assert all("python" in h.get("tags", []) for h in hits)
+    assert len(hits) >= 1
+
+    # Multiple tags (OR)
+    hits = json.loads(mcp_server.memory_search(query="tips", tags=["python", "git"]))
+    assert len(hits) >= 2
+
+    # Non-existent tag
+    hits = json.loads(mcp_server.memory_search(query="tips", tags=["rust"]))
+    assert len(hits) == 0
+
+
 def test_memory_search_caps_top_k(mcp_sandbox):
     _, mcp_server = mcp_sandbox
     raw = mcp_server.memory_search(query="anything", scope="all", top_k=999)

@@ -52,7 +52,11 @@ def _project_store(config: SomniumConfig) -> ParquetStore | None:
 
 
 def _search_all(
-    query: str, top_k: int, scope: str, config: SomniumConfig
+    query: str,
+    top_k: int,
+    scope: str,
+    config: SomniumConfig,
+    tags: list[str] | None = None,
 ) -> list[SearchHit]:
     """Run the query against every relevant store and merge by score."""
     embedder = get_embedder(config)
@@ -62,12 +66,12 @@ def _search_all(
     hits: list[SearchHit] = []
     if config.global_index_path.exists():
         with _global_store(config) as store:
-            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
+            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes, tags=tags))
 
     project_store = _project_store(config)
     if project_store is not None and config.project_index_path.exists():
         with project_store as store:
-            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
+            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes, tags=tags))
 
     hits.sort(key=lambda h: h.score, reverse=True)
     return hits[:top_k]
@@ -89,6 +93,7 @@ def memory_search(
     query: str,
     scope: str = "all",
     top_k: int = 5,
+    tags: list[str] | None = None,
 ) -> str:
     """Semantic search across your Somnium memories and skills.
 
@@ -96,13 +101,15 @@ def memory_search(
       query: Natural language query. Example: "how do we deploy to prod".
       scope: One of "all", "global", "project", "skills".
       top_k: Number of results to return (default 5, max 20).
+      tags: Optional list of tags to filter by. Only memories with at
+            least one matching tag are returned.
 
     Returns a JSON array of hits with file_path, score, scope, heading,
     and text.
     """
     top_k = max(1, min(int(top_k), 20))
     config = get_config()
-    hits = _search_all(query=query, top_k=top_k, scope=scope, config=config)
+    hits = _search_all(query=query, top_k=top_k, scope=scope, tags=tags, config=config)
     return json.dumps([h.to_dict() for h in hits], indent=2)
 
 

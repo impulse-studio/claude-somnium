@@ -4,20 +4,22 @@ Where Somnium is headed. Items near the top are most likely to ship
 next; further down is more speculative. Open an issue if you want
 something to happen sooner.
 
-## Next up
+## Shipped
 
-- **Dream digest viewer.** `somnium dreams [--last 10]` to browse
-  recent digests in the terminal. Shows what the dream agent wrote,
-  when, and for which session.
+- **Cost tracking + cap.** `somnium costs [--last 7d]` to see
+  spending. Logs Voyage and `claude -p` calls with token counts and
+  dollar amounts. `dream.max_budget_usd` config knob caps per-session
+  dream cost.
+
+## Next up
 
 - **Memory tags as search filters.** Tags are already in frontmatter
   but `memory_search` ignores them. Add `tags=["python"]` to the MCP
   tool and `--tags` to `somnium search`.
 
-- **Cost tracking + cap.** Log every Voyage and `claude -p` call with
-  token counts and dollar amounts. `somnium costs [--last 7d]` to see
-  spending. Add `dream.max_budget_usd` config knob to cap per-session
-  dream cost.
+- **Dream digest viewer.** `somnium dreams [--last 10]` to browse
+  recent digests in the terminal. Shows what the dream agent wrote,
+  when, and for which session.
 
 ## Medium term
 

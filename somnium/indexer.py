@@ -12,13 +12,27 @@ from typing import TYPE_CHECKING
 
 from .config import SomniumConfig, get_config
 from .embeddings import get_embedder
-from .storage.markdown import chunk_file, walk_memory_dir
+from .storage.markdown import Chunk, chunk_file, walk_memory_dir
 from .storage.scope import Scope
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from .storage.vector import VectorStore
+
+
+def _extract_tags(chunks: list[Chunk]) -> list[str] | None:
+    """Pull tags from frontmatter of the first chunk (all share the same file)."""
+    if not chunks:
+        return None
+    raw = chunks[0].frontmatter_data.get("tags")
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        return [t.strip() for t in raw.strip("[]").split(",") if t.strip()]
+    if isinstance(raw, list):
+        return [str(t) for t in raw]
+    return None
 
 
 @dataclass
@@ -83,12 +97,14 @@ def index_directory(
         emb_kind = "code" if kind.startswith("code") else "text"
         result = embedder.embed(texts, kind=emb_kind, input_type="document")
 
+        tags = _extract_tags(chunks)
         store.upsert_chunks(
             file_path=abs_path,
             file_hash=new_hash,
             scope=scope,
             chunks=chunks,
             embeddings=result.embeddings,
+            tags=tags,
         )
         stats.files_embedded += 1
         stats.chunks_upserted += len(chunks)
@@ -149,12 +165,14 @@ def index_single_file(
     emb_kind = "code" if kind.startswith("code") else "text"
     result = embedder.embed(texts, kind=emb_kind, input_type="document")
 
+    tags = _extract_tags(chunks)
     store.upsert_chunks(
         file_path=abs_path,
         file_hash=new_hash,
         scope=scope,
         chunks=chunks,
         embeddings=result.embeddings,
+        tags=tags,
     )
     stats.files_embedded = 1
     stats.chunks_upserted = len(chunks)

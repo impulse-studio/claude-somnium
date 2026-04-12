@@ -21,6 +21,12 @@ def search(
         "-s",
         help="global|project|skills|code|all",
     ),
+    tags: str = typer.Option(
+        "",
+        "--tags",
+        "-t",
+        help="Comma-separated tags to filter by.",
+    ),
     as_json: bool = typer.Option(False, "--json", help="Print raw JSON."),
 ) -> None:
     """Search memories, skills and code from the CLI.
@@ -34,13 +40,14 @@ def search(
     """
     reset_config_cache()
     cfg = get_config()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] or None
 
     include_code = scope in ("all", "code")
     include_memory = scope != "code"
     all_results: list[dict[str, object]] = []
 
     if include_memory:
-        all_results.extend(_search_memory(cfg, query, top_k, scope))
+        all_results.extend(_search_memory(cfg, query, top_k, scope, tag_list))
 
     if include_code:
         all_results.extend(_search_code(cfg, query, top_k, scope))
@@ -60,7 +67,7 @@ def search(
 
 
 def _search_memory(
-    cfg: object, query: str, top_k: int, scope: str
+    cfg: object, query: str, top_k: int, scope: str, tags: list[str] | None = None
 ) -> list[dict[str, object]]:
     from ..embeddings import get_embedder
     from ..storage.scope import normalize_scopes
@@ -72,10 +79,10 @@ def _search_memory(
 
     if cfg.global_index_path.exists():  # type: ignore[attr-defined]
         with global_store() as store:
-            results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes))
+            results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes, tags=tags))
     if cfg.project_index_path and cfg.project_index_path.exists():  # type: ignore[attr-defined]
         with ParquetStore(cfg.project_index_path) as store:  # type: ignore[attr-defined]
-            results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes))
+            results.extend({"type": "memory", "hit": h} for h in store.search(query_vec, top_k=top_k, scopes=scopes, tags=tags))
 
     return results
 
