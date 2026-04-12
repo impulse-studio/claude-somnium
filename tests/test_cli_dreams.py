@@ -1,4 +1,4 @@
-"""Tests for the ``somnium dreams`` CLI command."""
+"""Tests for the ``somnium dream list`` CLI command."""
 
 from __future__ import annotations
 
@@ -30,15 +30,15 @@ def _make_app(tmp_path: Path, monkeypatch):
     cfg.storage.global_root = str(tmp_path / "somnium")
     (tmp_path / "somnium").mkdir(parents=True, exist_ok=True)
 
-    from somnium.cli import dreams as dreams_mod  # noqa: F811
+    from somnium.cli import dream as dream_mod
 
-    monkeypatch.setattr(dreams_mod, "get_config", lambda: cfg)
+    monkeypatch.setattr(dream_mod, "get_config", lambda: cfg)
     from somnium.cli import app
 
     return app, cfg
 
 
-def test_dreams_lists_recent_digests(tmp_path, monkeypatch):
+def test_dream_list_shows_recent_digests(tmp_path, monkeypatch):
     app, cfg = _make_app(tmp_path, monkeypatch)
     sessions = cfg.dream_dir / "sessions"
     _write_digest(sessions, "2026-04-10T120000-abc12345.md", {
@@ -68,14 +68,14 @@ def test_dreams_lists_recent_digests(tmp_path, monkeypatch):
         "file_writes": 2,
     })
 
-    result = runner.invoke(app, ["dreams"])
+    result = runner.invoke(app, ["dream", "list"])
     assert result.exit_code == 0
     assert "abc12345" in result.output
     assert "def67890" in result.output
     assert "ghi11111" in result.output
 
 
-def test_dreams_last_limits_output(tmp_path, monkeypatch):
+def test_dream_list_last_limits_output(tmp_path, monkeypatch):
     app, cfg = _make_app(tmp_path, monkeypatch)
     sessions = cfg.dream_dir / "sessions"
     for i in range(5):
@@ -88,7 +88,7 @@ def test_dreams_last_limits_output(tmp_path, monkeypatch):
             "file_writes": 0,
         })
 
-    result = runner.invoke(app, ["dreams", "--last", "2"])
+    result = runner.invoke(app, ["dream", "list", "--last", "2"])
     assert result.exit_code == 0
     # Most recent 2 (sorted desc by filename); session[:8] = "sid4abcd", "sid3abcd"
     assert "sid4abcd" in result.output
@@ -97,14 +97,14 @@ def test_dreams_last_limits_output(tmp_path, monkeypatch):
     assert "sid0abcd" not in result.output
 
 
-def test_dreams_empty_dir(tmp_path, monkeypatch):
+def test_dream_list_empty_dir(tmp_path, monkeypatch):
     app, cfg = _make_app(tmp_path, monkeypatch)
-    result = runner.invoke(app, ["dreams"])
+    result = runner.invoke(app, ["dream", "list"])
     assert result.exit_code == 0
     assert "No dream sessions found" in result.output
 
 
-def test_dreams_json_output(tmp_path, monkeypatch):
+def test_dream_list_json_output(tmp_path, monkeypatch):
     app, cfg = _make_app(tmp_path, monkeypatch)
     sessions = cfg.dream_dir / "sessions"
     _write_digest(sessions, "2026-04-10T120000-aaa00000.md", {
@@ -117,7 +117,7 @@ def test_dreams_json_output(tmp_path, monkeypatch):
         "file_writes": 1,
     })
 
-    result = runner.invoke(app, ["dreams", "--json"])
+    result = runner.invoke(app, ["dream", "list", "--json"])
     assert result.exit_code == 0
     parsed = json.loads(result.output)
     assert isinstance(parsed, list)
@@ -126,9 +126,9 @@ def test_dreams_json_output(tmp_path, monkeypatch):
     assert parsed[0]["gate_decision"] == "run"
 
 
-def test_dreams_json_empty(tmp_path, monkeypatch):
+def test_dream_list_json_empty(tmp_path, monkeypatch):
     app, cfg = _make_app(tmp_path, monkeypatch)
-    result = runner.invoke(app, ["dreams", "--json"])
+    result = runner.invoke(app, ["dream", "list", "--json"])
     assert result.exit_code == 0
     parsed = json.loads(result.output)
     assert parsed == []

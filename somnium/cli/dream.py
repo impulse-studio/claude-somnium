@@ -1,17 +1,32 @@
-"""``somnium dream`` command."""
+"""``somnium dream`` subcommands: run the dream agent and browse digests."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+import frontmatter
 import typer
+from rich.console import Console
+from rich.table import Table
 
 from ..config import get_config, reset_config_cache
-from . import app, console
+
+dream_app = typer.Typer(
+    name="dream",
+    help="Run the dream agent or browse session digests.",
+    no_args_is_help=True,
+)
+console = Console()
 
 
-@app.command()
-def dream(
+# ---------------------------------------------------------------------------
+# somnium dream run
+# ---------------------------------------------------------------------------
+
+
+@dream_app.command()
+def run(
     transcript: Path | None = typer.Option(
         None,
         "--transcript",
@@ -66,10 +81,10 @@ def _print_dream_result(result: object) -> None:
     if result.write_records:  # type: ignore[attr-defined]
         console.print("Written:")
         for r in result.write_records:  # type: ignore[attr-defined]
-            tag = "[green]✓[/]" if r.status in ("written", "appended") else "[yellow]~[/]"
+            tag = "[green]\u2713[/]" if r.status in ("written", "appended") else "[yellow]~[/]"
             console.print(
                 f"  {tag} [{r.category}] {r.title}"
-                + (f" [dim]→ {r.path}[/]" if r.path else "")
+                + (f" [dim]\u2192 {r.path}[/]" if r.path else "")
                 + (f" [red]({r.reason})[/]" if r.reason and r.status != "written" else "")
             )
 
@@ -96,3 +111,113 @@ def _find_latest_transcript() -> Path | None:
     if not jsonl_files:
         return None
     return max(jsonl_files, key=lambda p: p.stat().st_mtime)
+
+
+# ---------------------------------------------------------------------------
+# somnium dream list
+# ---------------------------------------------------------------------------
+
+
+def _short_cwd(cwd: str, max_len: int = 30) -> str:
+    if not cwd or cwd == "-":
+        return "-"
+    if len(cwd) <= max_len:
+        return cwd
+    return "..." + cwd[-(max_len - 3) :]
+
+
+@dream_app.command(name="list")
+def list_digests(
+    last: int = typer.Option(
+        10,
+        "--last",
+        "-n",
+        help="Number of recent digests to show.",
+    ),
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Show all digests (overrides --last).",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output as JSON array.",
+    ),
+) -> None:
+    """Browse recent dream session digests."""
+    cfg = get_config()
+    sessions_dir = cfg.dream_dir / "sessions"
+
+    if not sessions_dir.exists():
+        if json_output:
+            console.print("[]")
+        else:
+            console.print("[dim]No dream sessions found.[/]")
+        return
+
+    files = sorted(sessions_dir.glob("*.md"), reverse=True)
+
+    if not files:
+        if json_output:
+            console.print("[]")
+        else:
+            console.print("[dim]No dream sessions found.[/]")
+        return
+
+    if not all_:
+        files = files[:last]
+
+    digests: list[dict] = []
+    for f in files:
+        post = frontmatter.load(str(f))
+        meta = dict(post.metadata)
+        meta["file"] = str(f)
+        digests.append(meta)
+
+    if json_output:
+        print(json.dumps(digests, default=str))
+        return
+
+    table = Table(
+        show_header=True,
+        header_style="bold",
+        title=f"Dream digests ({len(digests)} shown)",
+    )
+    table.add_column("Date", width=16)
+    table.add_column("Session", width=10)
+    table.add_column("Gate", width=6)
+    table.add_column("Category", width=16)
+    table.add_column("Msgs", justify="right", width=5)
+    table.add_column("Writes", justify="right", width=6)
+    table.add_column("CWD", max_width=30, overflow="ellipsis")
+
+    for d in digests:
+        ts = str(d.get("timestamp", ""))[:16].replace("T", " ")
+        session = str(d.get("session_id", ""))[:8]
+        gate = str(d.get("gate_decision", ""))
+        category = str(d.get("category", ""))
+        msgs = str(d.get("user_messages", ""))
+        writes = str(d.get("file_writes", ""))
+        cwd = _short_cwd(str(d.get("cwd", "-")))
+
+        # Color gate
+        if gate == "run":
+            gate_fmt = f"[green]{gate}[/]"
+        elif gate == "skip":
+            gate_fmt = f"[dim]{gate}[/]"
+        else:
+            gate_fmt = gate
+
+        # Color category
+        if category:
+            cat_fmt = f"[cyan]{category}[/]"
+        else:
+            cat_fmt = "[dim]-[/]"
+
+        table.add_row(ts, session, gate_fmt, cat_fmt, msgs, writes, cwd)
+
+    console.print()
+    console.print(table)
+    console.print()

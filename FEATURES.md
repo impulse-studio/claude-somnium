@@ -32,7 +32,7 @@ Everything Somnium ships today.
 - **Per-session digest.** Every dream run produces a markdown digest
   with what was written, what was skipped, and why.
 
-- **Dream digest viewer.** `somnium dreams [--last N]` to browse
+- **Dream digest viewer.** `somnium dream list [--last N]` to browse
   recent digests in the terminal. Shows what the dream agent wrote,
   when, and for which session. `--json` for machine-readable output.
 

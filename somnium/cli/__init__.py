@@ -40,19 +40,19 @@ def project_store(embedding_dim: int = 1024) -> ParquetStore | None:
     return ParquetStore(cfg.project_index_path, embedding_dim=embedding_dim)
 
 
-# --- Register sub-typer apps (memory, config) ----------------------------
+# --- Register sub-typer apps (memory, config, dream) ----------------------
 
 from .config import config_app  # noqa: E402
+from .dream import dream_app  # noqa: E402
 from .memory import memory_app  # noqa: E402
 
 app.add_typer(memory_app)
 app.add_typer(config_app)
+app.add_typer(dream_app)
 
 # --- Register command modules (each registers @app.command at import) ----
 
 from . import costs as _costs  # noqa: E402
-from . import dreams as _dreams  # noqa: E402
-from . import dream as _dream  # noqa: E402
 from . import index as _index  # noqa: E402
 from . import init as _init  # noqa: E402
 from . import search as _search  # noqa: E402
