@@ -11,11 +11,11 @@ something to happen sooner.
   dollar amounts. `dream.max_budget_usd` config knob caps per-session
   dream cost.
 
-## Next up
+- **Memory tags as search filters.** `memory_search(tags=["python"])`
+  in the MCP tool, `--tags` in `somnium search`, and tag extraction
+  from frontmatter during indexing.
 
-- **Memory tags as search filters.** Tags are already in frontmatter
-  but `memory_search` ignores them. Add `tags=["python"]` to the MCP
-  tool and `--tags` to `somnium search`.
+## Next up
 
 - **Dream digest viewer.** `somnium dreams [--last 10]` to browse
   recent digests in the terminal. Shows what the dream agent wrote,
