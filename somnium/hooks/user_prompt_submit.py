@@ -219,10 +219,6 @@ def main() -> None:
         included_hits = result.get("included_hits") or []
         _write_state(
             session_id=session_id,
-            n_hits=result["n_hits"],
-            n_skills=result.get("n_skills", 0),
-            n_memories=result.get("n_memories", 0),
-            chars=len(result["text"]),
             hits=[
                 {
                     "title": _hit_title(h),
@@ -235,7 +231,7 @@ def main() -> None:
         )
     else:
         log_info(HOOK_NAME, str(result))
-        _write_state(session_id=session_id, n_hits=0, n_skills=0, n_memories=0, chars=0, hits=[])
+        # Don't write zeros — preserve existing cumulative state.
 
     sys.exit(0)
 
@@ -254,29 +250,56 @@ def _state_filename(session_id: str) -> str:
 def _write_state(
     *,
     session_id: str,
-    n_hits: int,
-    n_skills: int,
-    n_memories: int,
-    chars: int,
     hits: list[dict[str, object]] | None = None,
 ) -> None:
-    """Write a per-session JSON state file so the status line and MCP debug
-    tool can show injection stats. Best-effort, non-fatal."""
+    """Append new hits to the per-session state file, deduplicating by
+    (title, scope). Counts are recomputed from the merged list so the
+    status line and /somnium:context always show cumulative data.
+    Best-effort, non-fatal."""
     try:
         import datetime as dt
 
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         state_path = STATE_DIR / _state_filename(session_id)
+
+        # Read existing cumulative hits.
+        existing_hits: list[dict[str, object]] = []
+        if state_path.exists():
+            try:
+                existing = json.loads(state_path.read_text(encoding="utf-8"))
+                existing_hits = existing.get("hits", [])
+            except Exception:  # noqa: BLE001
+                pass
+
+        # Merge: deduplicate by (title, scope), keep higher score.
+        seen: dict[tuple[str, str], int] = {}
+        for i, h in enumerate(existing_hits):
+            seen[(str(h.get("title", "")), str(h.get("scope", "")))] = i
+
+        merged = list(existing_hits)
+        for h in hits or []:
+            key = (str(h.get("title", "")), str(h.get("scope", "")))
+            if key in seen:
+                idx = seen[key]
+                if float(h.get("score", 0)) > float(merged[idx].get("score", 0)):
+                    merged[idx]["score"] = h["score"]
+            else:
+                seen[key] = len(merged)
+                merged.append(h)
+
+        # Recount from merged list.
+        n_skills = sum(1 for h in merged if "skill" in str(h.get("scope", "")))
+        n_memories = len(merged) - n_skills
+
         state_path.write_text(
             json.dumps(
                 {
                     "session_id": session_id,
-                    "n_hits": n_hits,
+                    "n_hits": len(merged),
                     "n_skills": n_skills,
                     "n_memories": n_memories,
-                    "chars": chars,
                     "timestamp": dt.datetime.now(tz=dt.UTC).isoformat(),
-                    "hits": hits or [],
+                    "hits": merged,
                 }
             ),
             encoding="utf-8",

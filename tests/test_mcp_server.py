@@ -287,7 +287,6 @@ def test_injection_debug_reads_session_state(injection_state_dir):
                 "n_hits": 2,
                 "n_skills": 1,
                 "n_memories": 1,
-                "chars": 300,
                 "timestamp": "2026-04-12T00:00:00+00:00",
                 "hits": [
                     {"title": "Git workflow", "scope": "global", "score": 0.9, "path": "~/mem/git.md"},
@@ -329,3 +328,45 @@ def test_injection_debug_returns_error_when_no_state(injection_state_dir):
     raw = mcp_server.injection_debug(session_id="nonexistent")
     data = json.loads(raw)
     assert "error" in data
+
+
+def test_track_mcp_hits_appends_to_state(injection_state_dir):
+    """memory_search results are tracked in session state."""
+    from somnium import mcp_server
+    from somnium.storage.vector import SearchHit
+
+    # Seed a state file as if the hook had already written it.
+    state_file = injection_state_dir / "prompt_context_mcp-test.json"
+    state_file.write_text(
+        json.dumps(
+            {
+                "session_id": "mcp-test",
+                "n_hits": 1,
+                "n_skills": 0,
+                "n_memories": 1,
+                "timestamp": "2026-04-12T00:00:00+00:00",
+                "hits": [{"title": "Existing", "scope": "global", "score": 0.8, "path": "~/e.md"}],
+            }
+        )
+    )
+
+    # Simulate a memory_search returning a new hit.
+    fake_hit = SearchHit(
+        file_path=str(Path.home() / "new.md"),
+        chunk_idx=0,
+        scope="project",
+        score=0.75,
+        text="some content",
+        heading_path=["New memory"],
+        tags=[],
+    )
+    mcp_server._track_mcp_hits([fake_hit])
+
+    data = json.loads(state_file.read_text())
+    assert data["n_hits"] == 2
+    assert data["n_memories"] == 2
+    titles = [h["title"] for h in data["hits"]]
+    assert "Existing" in titles
+    assert "New memory" in titles
+    new_hit = next(h for h in data["hits"] if h["title"] == "New memory")
+    assert new_hit["source"] == "search"

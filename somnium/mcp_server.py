@@ -85,6 +85,75 @@ def _slugify(text: str) -> str:
 
 
 # ----------------------------------------------------------------------
+# Session state tracking
+# ----------------------------------------------------------------------
+
+
+def _find_latest_state_file() -> Path | None:
+    """Find the most recently modified session state file."""
+    state_dir = Path.home() / ".claude" / "somnium" / "state"
+    if not state_dir.exists():
+        return None
+    candidates = sorted(
+        state_dir.glob("prompt_context_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None
+
+
+def _track_mcp_hits(hits: list[SearchHit]) -> None:
+    """Append MCP memory_search results to the most recent session state
+    so /somnium:context shows them alongside auto-injected memories."""
+    if not hits:
+        return
+    try:
+        state_file = _find_latest_state_file()
+        if not state_file:
+            return
+        existing = json.loads(state_file.read_text(encoding="utf-8"))
+        existing_hits: list[dict] = existing.get("hits", [])
+
+        seen: dict[tuple[str, str], int] = {}
+        for i, h in enumerate(existing_hits):
+            seen[(str(h.get("title", "")), str(h.get("scope", "")))] = i
+
+        merged = list(existing_hits)
+        for hit in hits:
+            title = hit.heading_path[-1] if hit.heading_path else Path(hit.file_path).stem
+            home = Path.home()
+            try:
+                short = f"~/{Path(hit.file_path).resolve().relative_to(home)}"
+            except ValueError:
+                short = hit.file_path
+            key = (title, hit.scope)
+            if key in seen:
+                idx = seen[key]
+                if hit.score > float(merged[idx].get("score", 0)):
+                    merged[idx]["score"] = round(hit.score, 3)
+            else:
+                seen[key] = len(merged)
+                merged.append({
+                    "title": title,
+                    "scope": hit.scope,
+                    "score": round(hit.score, 3),
+                    "path": short,
+                    "source": "search",
+                })
+
+        n_skills = sum(1 for h in merged if "skill" in str(h.get("scope", "")))
+        n_memories = len(merged) - n_skills
+        existing["hits"] = merged
+        existing["n_hits"] = len(merged)
+        existing["n_skills"] = n_skills
+        existing["n_memories"] = n_memories
+        existing["timestamp"] = dt.datetime.now(tz=dt.UTC).isoformat()
+        state_file.write_text(json.dumps(existing), encoding="utf-8")
+    except Exception:  # noqa: S110, BLE001
+        pass
+
+
+# ----------------------------------------------------------------------
 # Tools
 # ----------------------------------------------------------------------
 
@@ -111,6 +180,8 @@ def memory_search(
     top_k = max(1, min(int(top_k), 20))
     config = get_config()
     hits = _search_all(query=query, top_k=top_k, scope=scope, tags=tags, config=config)
+    # Track search results in session state so /somnium:context shows them.
+    _track_mcp_hits(hits)
     return json.dumps([h.to_dict() for h in hits], indent=2)
 
 
@@ -225,14 +296,17 @@ def code_search_semantic(query: str, top_k: int = 5) -> str:
 
 @mcp.tool()
 def injection_debug(session_id: str = "") -> str:
-    """List the memories and skills injected in the current session's last prompt.
+    """List all memories and skills Somnium injected in this session.
+
+    Shows cumulative data: every unique memory/skill auto-injected by
+    the UserPromptSubmit hook plus any retrieved via memory_search.
 
     Args:
       session_id: Claude Code session ID. If empty, reads the most
                   recently modified state file.
 
     Returns a JSON object with timestamp, counts, and the full hits
-    array (title, scope, score, path) for each injected item.
+    array (title, scope, score, path, source) for each item.
     """
     state_dir = Path.home() / ".claude" / "somnium" / "state"
     state_file: Path | None = None
@@ -241,15 +315,9 @@ def injection_debug(session_id: str = "") -> str:
         candidate = state_dir / f"prompt_context_{session_id}.json"
         if candidate.exists():
             state_file = candidate
-    else:
-        # Find most recently modified state file.
-        candidates = sorted(
-            state_dir.glob("prompt_context_*.json"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        ) if state_dir.exists() else []
-        if candidates:
-            state_file = candidates[0]
+
+    if not state_file:
+        state_file = _find_latest_state_file()
 
     if not state_file or not state_file.exists():
         return json.dumps({"error": "No injection state found. No memories were injected yet."})

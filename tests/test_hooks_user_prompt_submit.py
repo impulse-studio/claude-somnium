@@ -163,10 +163,6 @@ def test_write_state_creates_session_file(tmp_path, monkeypatch):
     monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
     hook._write_state(
         session_id="sess-42",
-        n_hits=3,
-        n_skills=1,
-        n_memories=2,
-        chars=500,
         hits=[{"title": "foo", "scope": "global", "score": 0.9, "path": "~/mem/foo.md"}],
     )
     state_file = tmp_path / "prompt_context_sess-42.json"
@@ -175,15 +171,44 @@ def test_write_state_creates_session_file(tmp_path, monkeypatch):
 
     data = json.loads(state_file.read_text())
     assert data["session_id"] == "sess-42"
-    assert data["n_skills"] == 1
-    assert data["n_memories"] == 2
+    assert data["n_skills"] == 0
+    assert data["n_memories"] == 1
     assert len(data["hits"]) == 1
     assert data["hits"][0]["title"] == "foo"
 
 
+def test_write_state_cumulative_dedup(tmp_path, monkeypatch):
+    """Multiple writes merge hits, deduplicating by (title, scope)."""
+    import json
+
+    monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
+    hook._write_state(
+        session_id="sess-1",
+        hits=[
+            {"title": "A", "scope": "global", "score": 0.8, "path": "~/a.md"},
+            {"title": "B", "scope": "project", "score": 0.7, "path": "~/b.md"},
+        ],
+    )
+    # Second write: one overlap (A), one new (C)
+    hook._write_state(
+        session_id="sess-1",
+        hits=[
+            {"title": "A", "scope": "global", "score": 0.9, "path": "~/a.md"},
+            {"title": "C", "scope": "skill_project", "score": 0.6, "path": "~/c.md"},
+        ],
+    )
+    data = json.loads((tmp_path / "prompt_context_sess-1.json").read_text())
+    assert data["n_hits"] == 3  # A, B, C
+    assert data["n_skills"] == 1  # C (skill_project)
+    assert data["n_memories"] == 2  # A, B
+    # A's score should be updated to the higher value
+    a_hit = next(h for h in data["hits"] if h["title"] == "A")
+    assert a_hit["score"] == 0.9
+
+
 def test_write_state_fallback_without_session_id(tmp_path, monkeypatch):
     monkeypatch.setattr(hook, "STATE_DIR", tmp_path)
-    hook._write_state(session_id="", n_hits=0, n_skills=0, n_memories=0, chars=0, hits=[])
+    hook._write_state(session_id="", hits=[])
     assert (tmp_path / "prompt_context.json").exists()
 
 
