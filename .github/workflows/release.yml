@@ -9,7 +9,7 @@ name: Release
 #   4. Create and push an annotated tag `vX.Y.Z`
 #   5. Build the wheel + sdist
 #   6. Publish to PyPI via OIDC Trusted Publishing (no token needed)
-#   7. Create a GitHub Release with auto-generated notes and attach
+#   7. Create a GitHub Release with commit-based changelog and attach
 #      the built artifacts
 
 on:
@@ -174,12 +174,39 @@ jobs:
         # No username/password — OIDC handshake happens automatically
         # because we have `permissions: id-token: write` above.
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG="${{ steps.bump.outputs.tag }}"
+          # Find the previous release tag (most recent tag before the one we just created).
+          PREV_TAG=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -n1 || true)
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release — list all commits on main.
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          # Build changelog: one line per commit, newest first.
+          # Format: "- <short message> (<short hash>)"
+          # The version-bump commit itself is excluded (noise).
+          BODY=$(git log --reverse --format="- %s (%h)" "$RANGE" \
+            | grep -v "^- Release v" || true)
+
+          if [ -z "$BODY" ]; then
+            BODY="Maintenance release (no user-facing changes)."
+          fi
+
+          # Write to file to avoid quoting issues.
+          printf "## What's Changed\n\n%s\n" "$BODY" > /tmp/release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "${{ steps.bump.outputs.tag }}" \
-            --generate-notes \
+            --notes-file /tmp/release-notes.md \
             --target main \
             dist/*
