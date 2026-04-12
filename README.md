@@ -236,6 +236,7 @@ somnium search "query" [-k 5] [-s scope] [-t tags]
                                         scopes: all|global|project|skills|code
                                         tags: comma-separated filter (e.g. python,git)
 somnium status                           full health snapshot (indexes, hooks, MCP)
+somnium dreams [-n 10] [--all] [--json]  browse recent dream session digests
 somnium dream [-t path] [--force]        manually run the dream agent
 somnium memory list [-s scope]           list all memories with scope, tags, date
 somnium memory show <slug>               print a memory's full content

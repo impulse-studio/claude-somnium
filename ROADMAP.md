@@ -6,12 +6,6 @@ something to happen sooner.
 
 ## Next up
 
-- **Dream digest viewer.** `somnium dreams [--last 10]` to browse
-  recent digests in the terminal. Shows what the dream agent wrote,
-  when, and for which session.
-
-## Medium term
-
 - **Ollama embeddings.** `nomic-embed-text` / `nomic-embed-code` for
   fully local, zero-cost embeddings. Config: `embeddings.provider = "ollama"`.
 
