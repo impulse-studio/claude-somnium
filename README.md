@@ -139,7 +139,7 @@ injected it. Claude knows where the file belongs without being re-told.
 
 | Tool | What it does |
 |------|--------------|
-| `memory_search(query, scope, top_k)` | Semantic search across global, project, and skill memories. |
+| `memory_search(query, scope, top_k, tags)` | Semantic search across global, project, and skill memories. Filter by tags. |
 | `memory_write(content, scope, title, tags)` | Append a memory mid-session and auto-reindex it. |
 | `memory_status()` | Health snapshot — counts, scopes, dream state. |
 | `code_search_semantic(query, top_k)` | Natural-language search over the project's source code. |
@@ -231,8 +231,10 @@ need to think about it.
 somnium init [--project] [--force]      create folders, config, hooks, slash commands
 somnium index [--code]                   embed memories and (optionally) source code
 somnium reindex                          re-check every file and upsert changes
-somnium search "query" [-k 5] [-s scope] search memories, skills and code
+somnium search "query" [-k 5] [-s scope] [-t tags]
+                                        search memories, skills and code
                                         scopes: all|global|project|skills|code
+                                        tags: comma-separated filter (e.g. python,git)
 somnium status                           full health snapshot (indexes, hooks, MCP)
 somnium dream [-t path] [--force]        manually run the dream agent
 somnium memory list [-s scope]           list all memories with scope, tags, date
@@ -273,8 +275,9 @@ Deeper guides for each subsystem live in [`docs/`](docs/):
 - [**Releasing**](docs/releasing.md) — how the `Release` GitHub
   Actions workflow bumps versions and publishes to PyPI via OIDC.
 
-The [**roadmap**](ROADMAP.md) lists what might land next — open an
-issue if you want any of it to land sooner.
+The [**features list**](FEATURES.md) covers everything Somnium ships
+today. The [**roadmap**](ROADMAP.md) lists what might land next — open
+an issue if you want any of it to land sooner.
 
 ## Testing
 
