@@ -149,7 +149,7 @@ def _track_mcp_hits(hits: list[SearchHit]) -> None:
         existing["n_memories"] = n_memories
         existing["timestamp"] = dt.datetime.now(tz=dt.UTC).isoformat()
         state_file.write_text(json.dumps(existing), encoding="utf-8")
-    except Exception:  # noqa: S110, BLE001
+    except Exception:  # noqa: S110
         pass
 
 

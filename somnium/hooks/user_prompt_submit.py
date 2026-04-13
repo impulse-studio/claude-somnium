@@ -268,7 +268,7 @@ def _write_state(
             try:
                 existing = json.loads(state_path.read_text(encoding="utf-8"))
                 existing_hits = existing.get("hits", [])
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: S110
                 pass
 
         # Merge: deduplicate by (title, scope), keep higher score.

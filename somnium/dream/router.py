@@ -288,7 +288,7 @@ def _find_file_by_title(title: str, directory: Path) -> Path | None:
             h1 = re.search(r"^#\s+(.+?)\s*$", text, re.MULTILINE)
             if h1 and h1.group(1).strip() == title:
                 return path
-        except Exception:  # noqa: S110
+        except Exception:  # noqa: S112
             continue
 
     return None
@@ -314,10 +314,10 @@ def _delete_memory_file(
 
     abs_path = str(path.resolve())
 
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         _deindex_file(path, kind, config)
-    except Exception:  # noqa: S110
-        pass
 
     try:
         path.unlink()
@@ -438,7 +438,7 @@ def _handle_merge(
     return records
 
 
-def dispatch(
+def dispatch(  # noqa: PLR0912, PLR0915
     items: list[dict[str, Any]],
     config: SomniumConfig,
 ) -> list[WriteRecord]:

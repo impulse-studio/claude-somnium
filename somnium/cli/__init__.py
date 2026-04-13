@@ -7,13 +7,16 @@ The ``app`` object is the top-level Typer instance registered as the
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import typer
 from rich.console import Console
 
 from ..config import get_config
 from ..storage.parquet_store import ParquetStore
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 app = typer.Typer(
     name="somnium",

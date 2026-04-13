@@ -90,7 +90,13 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S106", "ANN", "ARG", "PLR2004", "PLR0913", "SLF001"]
+"tests/**" = [
+    "S101", "S105", "S106", "S108", "S311",
+    "ANN", "ARG",
+    "PLR2004", "PLR0913", "SLF001",
+    "TC003", "RUF059", "Q003", "PT011",
+    "PERF401", "TRY301", "PIE807", "RUF007", "A002",
+]
 "__init__.py" = ["F401"]
 
 [tool.ruff.lint.pylint]

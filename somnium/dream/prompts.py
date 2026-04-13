@@ -261,7 +261,7 @@ def build_user_prompt(
     global_count = len(global_memory_titles)
     project_count = len(project_memory_titles)
     merge_hint = ""
-    if project_count >= 30:
+    if project_count >= 30:  # noqa: PLR2004
         merge_hint = (
             "\n- WARNING: project memory count is high. Aggressively merge "
             "related project memories to keep the total manageable."

@@ -127,7 +127,7 @@ def _short_cwd(cwd: str, max_len: int = 30) -> str:
 
 
 @dream_app.command(name="list")
-def list_digests(
+def list_digests(  # noqa: PLR0912
     last: int = typer.Option(
         10,
         "--last",
@@ -211,10 +211,7 @@ def list_digests(
             gate_fmt = gate
 
         # Color category
-        if category:
-            cat_fmt = f"[cyan]{category}[/]"
-        else:
-            cat_fmt = "[dim]-[/]"
+        cat_fmt = f"[cyan]{category}[/]" if category else "[dim]-[/]"
 
         table.add_row(ts, session, gate_fmt, cat_fmt, msgs, writes, cwd)
 
