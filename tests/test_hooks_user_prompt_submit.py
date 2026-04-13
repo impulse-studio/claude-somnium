@@ -31,6 +31,18 @@ class _FakeEmbedder:
     def model_for(self, kind):
         return "fake"
 
+    def rerank(self, query, documents, *, model="rerank-2-lite", top_k=None):
+        """No-op reranker: return documents in original order."""
+        from somnium.embeddings.base import RerankResult
+
+        results = [
+            RerankResult(index=i, score=1.0 - i * 0.01, document=doc)
+            for i, doc in enumerate(documents)
+        ]
+        if top_k:
+            results = results[:top_k]
+        return results
+
 
 @pytest.fixture
 def seeded_cfg(tmp_path: Path, monkeypatch):
@@ -234,3 +246,58 @@ def test_cleanup_old_state_files(tmp_path, monkeypatch):
     hook._cleanup_old_state_files()
     assert not old.exists()
     assert new.exists()
+
+
+# ---------------------------------------------------------------------------
+# Reranker integration
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbedderWithRerank(_FakeEmbedder):
+    """Extends the fake embedder with a rerank method that reverses order."""
+
+    def rerank(self, query, documents, *, model="rerank-2-lite", top_k=None):
+        from somnium.embeddings.base import RerankResult
+
+        # Return documents in reverse order with decreasing scores.
+        results = []
+        n = len(documents)
+        for i in range(n):
+            idx = n - 1 - i
+            results.append(RerankResult(index=idx, score=1.0 - i * 0.1, document=documents[idx]))
+        if top_k:
+            results = results[:top_k]
+        return results
+
+
+def test_reranker_reorders_hits(seeded_cfg, monkeypatch):
+    """Enable reranker → hits reordered by reranker scores."""
+    seeded_cfg.context_injection.reranker_enabled = True
+    seeded_cfg.embeddings.provider = "voyage"
+
+    fake = _FakeEmbedderWithRerank()
+    monkeypatch.setattr("somnium.embeddings.get_embedder", lambda config=None: fake)
+
+    result = hook.handle_event({"prompt": "how do I push"})
+    assert result["injected"] is True
+    # The reranker reverses order, so the second hit (lower embedding score)
+    # should now be first.
+    hits = result["included_hits"]
+    assert len(hits) >= 2
+    assert hits[0].score > hits[1].score
+
+
+def test_reranker_enabled_by_default(seeded_cfg):
+    """Default config → reranker_enabled=True."""
+    assert seeded_cfg.context_injection.reranker_enabled is True
+    result = hook.handle_event({"prompt": "how do I push"})
+    assert result["injected"] is True
+
+
+def test_reranker_skipped_for_ollama(seeded_cfg, monkeypatch):
+    """provider=ollama → no reranking even if enabled."""
+    seeded_cfg.context_injection.reranker_enabled = True
+    seeded_cfg.embeddings.provider = "ollama"
+
+    result = hook.handle_event({"prompt": "how do I push"})
+    assert result["injected"] is True

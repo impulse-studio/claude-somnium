@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 import voyageai
 
-from .base import EmbedResult, dim_for_model
+from .base import EmbedResult, RerankResult, dim_for_model
 
 if TYPE_CHECKING:
     from ..config import SomniumConfig
@@ -106,3 +106,58 @@ class VoyageEmbedder:
         """Convenience helper for single-query embedding."""
         result = self.embed([text], kind=kind, input_type="query")
         return result.embeddings[0]
+
+    def rerank(
+        self,
+        query: str,
+        documents: list[str],
+        *,
+        model: str = "rerank-2-lite",
+        top_k: int | None = None,
+    ) -> list[RerankResult]:
+        """Rerank documents by relevance to a query using Voyage's reranker.
+
+        Returns results sorted by descending relevance score.
+        """
+        if not documents:
+            return []
+
+        attempt = 0
+        while True:
+            try:
+                resp = self._client.rerank(
+                    query=query,
+                    documents=documents,
+                    model=model,
+                    top_k=top_k,
+                )
+                break
+            except Exception as exc:
+                attempt += 1
+                if attempt >= 5:  # noqa: PLR2004
+                    raise RuntimeError(
+                        f"Voyage rerank failed after {attempt} attempts: {exc}"
+                    ) from exc
+                time.sleep(min(2**attempt, 16))
+
+        from ..cost import log_cost, voyage_cost
+
+        total_tokens = getattr(resp, "total_tokens", 0)
+        log_cost(
+            source="rerank",
+            model=model,
+            tokens=total_tokens,
+            cost_usd=voyage_cost(model, total_tokens),
+            context=f"rerank {len(documents)} docs",
+        )
+
+        results = [
+            RerankResult(
+                index=r.index,
+                score=r.relevance_score,
+                document=r.document,
+            )
+            for r in resp.results
+        ]
+        results.sort(key=lambda r: r.score, reverse=True)
+        return results

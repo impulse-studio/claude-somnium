@@ -65,6 +65,8 @@ class ContextInjectionConfig(BaseModel):
     top_k: int = 5
     context_budget_tokens: int = 2000
     scopes: list[str] = Field(default_factory=lambda: ["project", "global", "skills"])
+    reranker_enabled: bool = True
+    reranker_model: str = "rerank-2-lite"
 
 
 class CodeSearchConfig(BaseModel):

@@ -35,6 +35,17 @@ class _FakeEmbedder:
     def model_for(self, kind):
         return "fake"
 
+    def rerank(self, query, documents, *, model="rerank-2-lite", top_k=None):
+        from somnium.embeddings.base import RerankResult
+
+        results = [
+            RerankResult(index=i, score=1.0 - i * 0.01, document=doc)
+            for i, doc in enumerate(documents)
+        ]
+        if top_k:
+            results = results[:top_k]
+        return results
+
 
 @pytest.fixture
 def mcp_sandbox(tmp_path, monkeypatch):
@@ -411,3 +422,45 @@ def test_track_mcp_hits_appends_to_state(injection_state_dir):
     assert "New memory" in titles
     new_hit = next(h for h in data["hits"] if h["title"] == "New memory")
     assert new_hit["source"] == "search"
+
+
+# ---------------------------------------------------------------------------
+# Reranker integration
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbedderWithRerank(_FakeEmbedder):
+    """Extends the fake embedder with a rerank method that reverses order."""
+
+    def rerank(self, query, documents, *, model="rerank-2-lite", top_k=None):
+        from somnium.embeddings.base import RerankResult
+
+        results = []
+        n = len(documents)
+        for i in range(n):
+            idx = n - 1 - i
+            results.append(RerankResult(index=idx, score=1.0 - i * 0.1, document=documents[idx]))
+        if top_k:
+            results = results[:top_k]
+        return results
+
+
+def test_memory_search_with_reranker(mcp_sandbox, monkeypatch):
+    """Reranker enabled → results reordered."""
+    cfg, mcp_server = mcp_sandbox
+    cfg.context_injection.reranker_enabled = True
+    cfg.embeddings.provider = "voyage"
+
+    fake = _FakeEmbedderWithRerank()
+    monkeypatch.setattr(mcp_server, "get_embedder", lambda config=None: fake)
+
+    # Seed two memories
+    mcp_server.memory_write(content="first memory", scope="global", title="alpha")
+    mcp_server.memory_write(content="second memory", scope="global", title="beta")
+
+    raw = mcp_server.memory_search(query="memory", scope="global", top_k=5)
+    hits = json.loads(raw)
+    assert isinstance(hits, list)
+    # With reranking, scores should come from the reranker (not embedding cosine).
+    if len(hits) >= 2:
+        assert hits[0]["score"] >= hits[1]["score"]

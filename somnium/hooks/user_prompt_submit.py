@@ -116,16 +116,57 @@ def _search_all(prompt: str, config: SomniumConfig, top_k: int, scopes: list[str
     embedder = get_embedder(config)
     query_vec = embedder.embed_query(prompt)
 
+    reranker_enabled = (
+        config.context_injection.reranker_enabled
+        and config.embeddings.provider == "voyage"
+    )
+    retrieval_k = top_k * 3 if reranker_enabled else top_k
+
     hits: list[SearchHit] = []
     if config.global_index_path.exists():
         with ParquetStore(config.global_index_path) as store:
-            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
+            hits.extend(store.search(query_vec, top_k=retrieval_k, scopes=scopes))
     if config.project_index_path and config.project_index_path.exists():
         with ParquetStore(config.project_index_path) as store:
-            hits.extend(store.search(query_vec, top_k=top_k, scopes=scopes))
+            hits.extend(store.search(query_vec, top_k=retrieval_k, scopes=scopes))
 
     hits.sort(key=lambda h: h.score, reverse=True)
+    hits = hits[:retrieval_k]
+
+    if reranker_enabled and hits:
+        hits = _rerank_hits(prompt, hits, embedder, config)
+
     return hits[:top_k]
+
+
+def _rerank_hits(
+    query: str,
+    hits: list[SearchHit],
+    embedder: object,
+    config: SomniumConfig,
+) -> list[SearchHit]:
+    """Re-score hits using the Voyage reranker and return reordered list."""
+    from ..storage.vector import SearchHit as _SearchHit
+
+    documents = [h.text for h in hits]
+    model = config.context_injection.reranker_model
+    results = embedder.rerank(query, documents, model=model)  # type: ignore[union-attr]
+
+    reranked: list[_SearchHit] = []
+    for r in results:
+        hit = hits[r.index]
+        reranked.append(
+            _SearchHit(
+                file_path=hit.file_path,
+                chunk_idx=hit.chunk_idx,
+                scope=hit.scope,
+                score=r.score,
+                text=hit.text,
+                heading_path=hit.heading_path,
+                tags=hit.tags,
+            )
+        )
+    return reranked
 
 
 def _hit_title(hit: SearchHit) -> str:

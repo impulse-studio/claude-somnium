@@ -17,6 +17,13 @@ class EmbedResult:
     input_type: str  # "document" or "query"
 
 
+@dataclass
+class RerankResult:
+    index: int
+    score: float
+    document: str
+
+
 @dataclass(frozen=True)
 class ModelInfo:
     """Metadata for a known embedding model."""

@@ -51,6 +51,10 @@ top_k = 5
 context_budget_tokens = 2000
 # Scopes to search, in priority order.
 scopes = ["project", "global", "skills"]
+# Second-stage reranking with Voyage rerank-2-lite for better relevance.
+# Only works with provider = "voyage". Costs ~$0.0001/call.
+reranker_enabled = true
+reranker_model = "rerank-2-lite"
 
 [code_search]
 # Phase 4 features. Safe to leave enabled, they just no-op without an index.
