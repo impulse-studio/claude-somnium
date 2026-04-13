@@ -1,4 +1,4 @@
-"""Tests for the ``somnium dream list`` CLI command."""
+"""Tests for the ``somnium dream list`` and ``somnium dream run`` CLI commands."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 from typer.testing import CliRunner
+
+from somnium.cli.dream import _find_latest_transcript, _short_cwd
 
 runner = CliRunner()
 
@@ -132,3 +134,165 @@ def test_dream_list_json_empty(tmp_path, monkeypatch):
     assert result.exit_code == 0
     parsed = json.loads(result.output)
     assert parsed == []
+
+
+def test_dream_list_all_flag(tmp_path, monkeypatch):
+    """--all shows all digests regardless of --last."""
+    app, cfg = _make_app(tmp_path, monkeypatch)
+    sessions = cfg.dream_dir / "sessions"
+    for i in range(15):
+        _write_digest(sessions, f"2026-04-{i + 1:02d}T120000-sid{i:05d}.md", {
+            "session_id": f"sid{i:05d}-full",
+            "timestamp": f"2026-04-{i + 1:02d}T12:00:00+00:00",
+            "cwd": "/tmp",
+            "gate_decision": "run",
+            "user_messages": 1,
+            "file_writes": 0,
+        })
+
+    result = runner.invoke(app, ["dream", "list", "--all"])
+    assert result.exit_code == 0
+    assert "15 shown" in result.output
+
+
+# ---------------------------------------------------------------------------
+# _short_cwd
+# ---------------------------------------------------------------------------
+
+
+class TestShortCwd:
+    def test_empty(self):
+        assert _short_cwd("") == "-"
+
+    def test_dash(self):
+        assert _short_cwd("-") == "-"
+
+    def test_short_path(self):
+        assert _short_cwd("/tmp/foo") == "/tmp/foo"
+
+    def test_long_path_truncated(self):
+        long = "/home/user/very/long/path/to/project/root"
+        result = _short_cwd(long, max_len=20)
+        assert result.startswith("...")
+        assert len(result) <= 20
+
+
+# ---------------------------------------------------------------------------
+# _find_latest_transcript
+# ---------------------------------------------------------------------------
+
+
+def test_find_latest_transcript_no_projects(tmp_path, monkeypatch):
+    """Returns None when ~/.claude/projects doesn't exist."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    result = _find_latest_transcript()
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# somnium dream run — error cases
+# ---------------------------------------------------------------------------
+
+
+def test_dream_run_no_api_key(tmp_path, monkeypatch):
+    """dream run exits 1 with no Voyage API key."""
+    app, cfg = _make_app(tmp_path, monkeypatch)
+    cfg.embeddings.api_key = None
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+
+    from somnium.cli import dream as dream_mod
+
+    monkeypatch.setattr(dream_mod, "reset_config_cache", lambda: None)
+
+    result = runner.invoke(app, ["dream", "run"])
+    assert result.exit_code == 1
+    assert "Voyage API key" in result.output
+
+
+def test_dream_run_no_transcript(tmp_path, monkeypatch):
+    """dream run exits 1 when no transcript found."""
+    app, cfg = _make_app(tmp_path, monkeypatch)
+    cfg.embeddings.api_key = "fake"
+
+    from somnium.cli import dream as dream_mod
+
+    monkeypatch.setattr(dream_mod, "reset_config_cache", lambda: None)
+    monkeypatch.setattr(dream_mod, "_find_latest_transcript", lambda: None)
+
+    result = runner.invoke(app, ["dream", "run"])
+    assert result.exit_code == 1
+    assert "no transcript" in result.output
+
+
+# ---------------------------------------------------------------------------
+# _print_dream_result
+# ---------------------------------------------------------------------------
+
+
+def test_print_dream_result_skip(tmp_path):
+    """Print result for a skip gate decision."""
+    from somnium.cli.dream import _print_dream_result
+    from somnium.dream.gate import GateDecision
+
+    class FakeGate:
+        decision = GateDecision.SKIP
+        reason = "too short"
+
+    class FakeResult:
+        gate_result = FakeGate()
+        dream_result = None
+        write_records = None
+        error = None
+        digest_path = None
+
+    _print_dream_result(FakeResult())
+
+
+def test_print_dream_result_run_with_records(tmp_path):
+    """Print result for a run gate with write records."""
+    from somnium.cli.dream import _print_dream_result
+    from somnium.dream.gate import GateDecision
+
+    class FakeGate:
+        decision = GateDecision.RUN
+        reason = "meaningful session"
+
+    class FakeDreamResult:
+        should_persist = True
+        items: list = [{"title": "Test"}]  # noqa: RUF012
+        summary = "A summary"
+
+    class FakeRecord:
+        status = "written"
+        category = "global_memory"
+        title = "Test Memory"
+        path = "/home/memory/test.md"
+        reason = None
+
+    class FakeResult:
+        gate_result = FakeGate()
+        dream_result = FakeDreamResult()
+        write_records: list = [FakeRecord()]  # noqa: RUF012
+        error = None
+        digest_path = "/home/dream/sessions/digest.md"
+
+    _print_dream_result(FakeResult())
+
+
+def test_print_dream_result_with_error():
+    """Print result with an error."""
+    from somnium.cli.dream import _print_dream_result
+    from somnium.dream.gate import GateDecision
+
+    class FakeGate:
+        decision = GateDecision.RUN
+        reason = "ok"
+
+    class FakeResult:
+        gate_result = FakeGate()
+        dream_result = None
+        write_records = None
+        error = "something went wrong"
+        digest_path = None
+
+    _print_dream_result(FakeResult())

@@ -205,3 +205,112 @@ class _StringIO:
 
     def read(self) -> str:
         return self._text
+
+
+# ---------------------------------------------------------------------------
+# _dream_budget_exceeded
+# ---------------------------------------------------------------------------
+
+
+def test_budget_exceeded_true(monkeypatch):
+    """Returns True when costs exceed cap."""
+    monkeypatch.setattr(
+        "somnium.cost.read_costs",
+        lambda source=None: [{"cost_usd": 0.6}, {"cost_usd": 0.5}],
+    )
+    assert stop_hook._dream_budget_exceeded(1.0) is True
+
+
+def test_budget_not_exceeded(monkeypatch):
+    """Returns False when costs are under cap."""
+    monkeypatch.setattr(
+        "somnium.cost.read_costs",
+        lambda source=None: [{"cost_usd": 0.3}],
+    )
+    assert stop_hook._dream_budget_exceeded(1.0) is False
+
+
+def test_budget_returns_false_on_error(monkeypatch):
+    """Returns False when read_costs raises."""
+    def _boom(source=None):
+        raise OSError("no file")
+
+    monkeypatch.setattr("somnium.cost.read_costs", _boom)
+    assert stop_hook._dream_budget_exceeded(1.0) is False
+
+
+# ---------------------------------------------------------------------------
+# Budget-exceeded gate run → skip
+# ---------------------------------------------------------------------------
+
+
+def test_meaningful_session_skipped_on_budget(sandbox_cfg, tmp_path, monkeypatch):
+    """When budget is exceeded, gate=run but dispatched is not set."""
+    monkeypatch.delenv(DREAM_SUBAGENT_ENV_VAR, raising=False)
+    sandbox_cfg.dream.max_budget_usd = 0.01
+    transcript = _write_transcript(tmp_path / "t.jsonl", n_user=4, with_writes=True)
+
+    monkeypatch.setattr(
+        "somnium.cost.read_costs",
+        lambda source=None: [{"cost_usd": 1.0}],
+    )
+
+    spawn_calls = []
+    monkeypatch.setattr(stop_hook, "_spawn_detached_runner", lambda *a: spawn_calls.append(a))
+
+    result = stop_hook.handle_event(
+        {"transcript_path": str(transcript), "cwd": "/tmp"}
+    )
+    assert result["gate"] == "run"
+    assert "skipped" in result
+    assert "budget" in result["skipped"]
+    assert len(spawn_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# _spawn_detached_runner (mocked Popen)
+# ---------------------------------------------------------------------------
+
+
+def test_spawn_detached_runner(tmp_path, monkeypatch):
+    """Verify spawn opens log files and calls Popen."""
+    import subprocess
+
+    popen_calls = []
+
+    class FakePopen:
+        def __init__(self, *args, **kwargs):
+            popen_calls.append((args, kwargs))
+
+    monkeypatch.setattr(subprocess, "Popen", FakePopen)
+    monkeypatch.setattr(stop_hook, "_resolve_dream_runner_path", lambda: "/usr/bin/somnium-dream-run")
+
+    # Create log dir parent
+    log_dir = Path.home() / ".claude" / "somnium" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    stop_hook._spawn_detached_runner("/tmp/t.jsonl", "/some/cwd")
+    assert len(popen_calls) == 1
+    args, kwargs = popen_calls[0]
+    cmd = args[0]
+    assert "/usr/bin/somnium-dream-run" in cmd[0]
+    assert "--transcript" in cmd
+    assert "--cwd" in cmd
+    assert kwargs["start_new_session"] is True
+
+
+# ---------------------------------------------------------------------------
+# transcriptPath alias
+# ---------------------------------------------------------------------------
+
+
+def test_transcript_path_alias(sandbox_cfg, tmp_path, monkeypatch):
+    """event.transcriptPath (camelCase) should also work."""
+    monkeypatch.delenv(DREAM_SUBAGENT_ENV_VAR, raising=False)
+    sandbox_cfg.dream.enabled = False
+    transcript = _write_transcript(tmp_path / "t.jsonl")
+
+    result = stop_hook.handle_event(
+        {"transcriptPath": str(transcript), "cwd": "/tmp"}
+    )
+    assert result == {"skipped": "dream.enabled=false"}
