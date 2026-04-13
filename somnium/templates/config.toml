@@ -40,6 +40,9 @@ skip_patterns = [
     "^run tests?$",
     "^fix the typo$",
 ]
+# Use a cheap Haiku call to pre-filter ambiguous sessions (no file writes)
+# before spending the full Sonnet budget. Costs ~$0.002/call.
+# llm_gate_enabled = false
 
 [context_injection]
 # UserPromptSubmit hook: inject top-K memory chunks for every prompt.

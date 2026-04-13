@@ -63,6 +63,15 @@ def run_dream(
     else:
         gate_result = gate_module.decide(transcript, config)
 
+    # LLM gate fallback for ambiguous sessions (discussion, no writes).
+    if (
+        not force
+        and gate_result.decision == GateDecision.RUN
+        and gate_result.category == "discussion"
+        and config.dream.gate.llm_gate_enabled
+    ):
+        gate_result = gate_module.llm_judge(transcript, config)
+
     result = DreamRunResult(
         gate_result=gate_result,
         transcript_path=transcript_path,

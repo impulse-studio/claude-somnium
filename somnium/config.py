@@ -49,6 +49,7 @@ class StorageConfig(BaseModel):
 class DreamGateConfig(BaseModel):
     min_user_messages: int = 3
     skip_patterns: list[str] = Field(default_factory=list)
+    llm_gate_enabled: bool = False
 
 
 class DreamConfig(BaseModel):

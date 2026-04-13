@@ -13,9 +13,10 @@ import pytest
 
 from somnium import indexer as memory_indexer
 from somnium.config import SomniumConfig
+from somnium.dream import gate as gate_module
 from somnium.dream import runner as runner_module
 from somnium.dream.agent import DreamAgentError, DreamResult
-from somnium.dream.gate import GateDecision
+from somnium.dream.gate import GateDecision, GateResult
 from somnium.dream.runner import run_dream
 from somnium.embeddings.voyage import EmbedResult
 
@@ -234,3 +235,92 @@ def test_run_dream_agent_error_writes_error_digest(sandbox_cfg, tmp_path, monkey
     assert result.digest_path.exists()
     body = result.digest_path.read_text()
     assert "simulated timeout" in body
+
+
+# ---------------------------------------------------------------------------
+# LLM gate integration
+# ---------------------------------------------------------------------------
+
+
+def test_run_dream_llm_gate_skips_discussion(sandbox_cfg, tmp_path, monkeypatch):
+    """When llm_gate_enabled=True and the LLM says SKIP, the agent is NOT called."""
+    sandbox_cfg.dream.gate.llm_gate_enabled = True
+    # 7 user messages, no writes → heuristic says RUN/discussion
+    transcript = _make_transcript_file(tmp_path, n_user=7, with_writes=False)
+
+    agent_called = {"count": 0}
+
+    def _fake_run_agent(*args, **kwargs):
+        agent_called["count"] += 1
+        return DreamResult(should_persist=False, summary="", items=[])
+
+    monkeypatch.setattr(runner_module, "run_dream_agent", _fake_run_agent)
+
+    # LLM judge says SKIP
+    def _fake_llm_judge(transcript, config):
+        return GateResult(
+            decision=GateDecision.SKIP,
+            reason="llm_judge: pure Q&A",
+            category="discussion",
+        )
+
+    monkeypatch.setattr(gate_module, "llm_judge", _fake_llm_judge)
+
+    result = run_dream(transcript_path=transcript, config=sandbox_cfg)
+    assert result.gate_result.decision == GateDecision.SKIP
+    assert "llm_judge" in result.gate_result.reason
+    assert agent_called["count"] == 0
+    assert result.digest_path.exists()
+
+
+def test_run_dream_llm_gate_disabled_by_default(sandbox_cfg, tmp_path, monkeypatch):
+    """With default config (llm_gate_enabled=False), the LLM judge is NOT called."""
+    assert sandbox_cfg.dream.gate.llm_gate_enabled is False
+    transcript = _make_transcript_file(tmp_path, n_user=7, with_writes=False)
+
+    judge_called = {"count": 0}
+    original_llm_judge = gate_module.llm_judge
+
+    def _tracking_judge(transcript, config):
+        judge_called["count"] += 1
+        return original_llm_judge(transcript, config)
+
+    monkeypatch.setattr(gate_module, "llm_judge", _tracking_judge)
+
+    def _fake_run_agent(*args, **kwargs):
+        return DreamResult(should_persist=False, summary="", items=[])
+
+    monkeypatch.setattr(runner_module, "run_dream_agent", _fake_run_agent)
+
+    result = run_dream(transcript_path=transcript, config=sandbox_cfg)
+    assert result.gate_result.decision == GateDecision.RUN
+    assert judge_called["count"] == 0
+
+
+def test_run_dream_llm_gate_ignores_implementation(sandbox_cfg, tmp_path, monkeypatch):
+    """LLM gate should NOT fire for sessions with file writes (implementation)."""
+    sandbox_cfg.dream.gate.llm_gate_enabled = True
+    # 4 user messages with writes → heuristic says RUN/implementation
+    transcript = _make_transcript_file(tmp_path, n_user=4, with_writes=True)
+
+    judge_called = {"count": 0}
+
+    def _tracking_judge(transcript, config):
+        judge_called["count"] += 1
+        return GateResult(
+            decision=GateDecision.SKIP,
+            reason="should not be called",
+            category="discussion",
+        )
+
+    monkeypatch.setattr(gate_module, "llm_judge", _tracking_judge)
+
+    def _fake_run_agent(*args, **kwargs):
+        return DreamResult(should_persist=False, summary="", items=[])
+
+    monkeypatch.setattr(runner_module, "run_dream_agent", _fake_run_agent)
+
+    result = run_dream(transcript_path=transcript, config=sandbox_cfg)
+    assert result.gate_result.decision == GateDecision.RUN
+    assert result.gate_result.category == "implementation"
+    assert judge_called["count"] == 0
