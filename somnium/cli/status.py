@@ -218,10 +218,15 @@ def _print_mcp_status() -> None:
 
 def _print_config_status(cfg: SomniumConfig) -> None:
     console.rule("[bold]Configuration[/]")
-    api_key = cfg.embeddings.resolve_api_key()
-    key_status = "[green]set[/]" if api_key else "[red]missing[/]"
+    provider = cfg.embeddings.provider
     dream_status = "[green]enabled[/]" if cfg.dream.enabled else "[red]disabled[/]"
-    console.print(f"  Voyage API key: {key_status}")
+    console.print(f"  Provider:       [cyan]{provider}[/]")
+    if provider == "voyage":
+        api_key = cfg.embeddings.resolve_api_key()
+        key_status = "[green]set[/]" if api_key else "[red]missing[/]"
+        console.print(f"  Voyage API key: {key_status}")
+    elif provider == "ollama":
+        console.print(f"  Ollama URL:     [cyan]{cfg.embeddings.ollama_base_url}[/]")
     console.print(
         f"    [dim]model_text=[/][cyan]{cfg.embeddings.model_text}[/]"
         f"  [dim]model_code=[/][cyan]{cfg.embeddings.model_code}[/]"

@@ -7,25 +7,19 @@ should only talk to this module, never the voyageai SDK directly.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import voyageai
+
+from .base import EmbedResult, dim_for_model
 
 if TYPE_CHECKING:
     from ..config import SomniumConfig
 
 from ..config import get_config
 
-# voyage-3.5 and voyage-code-3 both default to 1024 dims.
+# Kept for backwards-compat with tests that import it directly.
 DEFAULT_EMBEDDING_DIM = 1024
-
-
-@dataclass
-class EmbedResult:
-    embeddings: list[list[float]]
-    model: str
-    input_type: str  # "document" or "query"
 
 
 class VoyageEmbedder:
@@ -47,6 +41,12 @@ class VoyageEmbedder:
         self._client = voyageai.Client(api_key=api_key)
 
     # ------------------------------------------------------------------
+
+    @property
+    def embedding_dim(self) -> int:
+        """Dimensionality of the vectors produced by this embedder."""
+        known = dim_for_model(self.model_for("text"))
+        return known if known is not None else DEFAULT_EMBEDDING_DIM
 
     def model_for(self, kind: str) -> str:
         if kind == "code":
@@ -106,15 +106,3 @@ class VoyageEmbedder:
         """Convenience helper for single-query embedding."""
         result = self.embed([text], kind=kind, input_type="query")
         return result.embeddings[0]
-
-
-_CACHED_EMBEDDER: VoyageEmbedder | None = None
-
-
-def get_embedder(config: SomniumConfig | None = None) -> VoyageEmbedder:
-    """Return a process-wide cached embedder. Reset by calling with
-    a fresh config object."""
-    global _CACHED_EMBEDDER  # noqa: PLW0603
-    if _CACHED_EMBEDDER is None or config is not None:
-        _CACHED_EMBEDDER = VoyageEmbedder(config=config)
-    return _CACHED_EMBEDDER

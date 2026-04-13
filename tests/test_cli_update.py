@@ -74,7 +74,7 @@ def test_update_uv_success(monkeypatch):
         "run",
         lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": "upgraded", "stderr": ""})(),
     )
-    monkeypatch.setattr(update_mod, "_reregister_hooks", lambda: None)
+    monkeypatch.setattr(update_mod, "_reinit", lambda: None)
     result = runner.invoke(app, ["update"])
     assert result.exit_code == 0
     assert "upgrade complete" in result.output
@@ -106,24 +106,28 @@ def test_update_skip_init(monkeypatch):
         lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": "done", "stderr": ""})(),
     )
     reregister_called = {"v": False}
-    original = update_mod._reregister_hooks
+    original = update_mod._reinit
 
     def _track():
         reregister_called["v"] = True
         original()
 
-    monkeypatch.setattr(update_mod, "_reregister_hooks", _track)
+    monkeypatch.setattr(update_mod, "_reinit", _track)
     result = runner.invoke(app, ["update", "--skip-init"])
     assert result.exit_code == 0
     assert not reregister_called["v"]
 
 
-def test_reregister_hooks_handles_exception(monkeypatch):
-    """_reregister_hooks catches install errors gracefully."""
+def test_reinit_handles_exception(monkeypatch):
+    """_reinit catches install errors gracefully."""
+    from somnium.config import SomniumConfig
+
     monkeypatch.setattr(update_mod, "reset_config_cache", lambda: None)
+    monkeypatch.setattr(update_mod, "load_config", SomniumConfig)
+    monkeypatch.setattr("somnium.cli.init._setup_global", lambda cfg, force: None)
     monkeypatch.setattr(update_mod, "install_hooks", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
     # Should not raise
-    update_mod._reregister_hooks()
+    update_mod._reinit()
 
 
 def _raise(exc):

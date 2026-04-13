@@ -18,6 +18,10 @@ from somnium.embeddings.voyage import EmbedResult
 
 
 class _FakeEmbedder:
+    @property
+    def embedding_dim(self):
+        return 4
+
     def embed(self, texts, *, kind="text", input_type="document"):
         return EmbedResult(
             embeddings=[[1.0, 0.0, 0.0, 0.0] for _ in texts],
@@ -238,15 +242,52 @@ def test_memory_status_returns_dict_with_expected_keys(mcp_sandbox):
     assert "global_index" in status
     assert "global_index_exists" in status
     assert "project_root" in status
-    assert "voyage_key_set" in status
+    assert "api_key_set" in status
+    assert "embeddings_provider" in status
     assert "dream_enabled" in status
 
 
-def test_memory_status_reports_voyage_key_state(mcp_sandbox):
+def test_memory_status_reports_api_key_state(mcp_sandbox):
     _, mcp_server = mcp_sandbox
     raw = mcp_server.memory_status()
     status = json.loads(raw)
-    assert status["voyage_key_set"] is True
+    assert status["api_key_set"] is True
+    assert status["embeddings_provider"] == "voyage"
+
+
+def test_memory_status_reports_model_fields(mcp_sandbox):
+    _, mcp_server = mcp_sandbox
+    raw = mcp_server.memory_status()
+    status = json.loads(raw)
+    assert "embeddings_model_text" in status
+    assert "embeddings_model_code" in status
+
+
+def test_memory_status_ollama_api_key_always_true(mcp_sandbox, monkeypatch):
+    """When provider is ollama, api_key_set should always be True."""
+    cfg, mcp_server = mcp_sandbox
+    cfg.embeddings.provider = "ollama"
+    cfg.embeddings.api_key = None
+    cfg.embeddings.api_key_env = "_NOT_SET_EVER"
+    monkeypatch.delenv("_NOT_SET_EVER", raising=False)
+
+    raw = mcp_server.memory_status()
+    status = json.loads(raw)
+    assert status["api_key_set"] is True
+    assert status["embeddings_provider"] == "ollama"
+
+
+def test_memory_status_voyage_no_key(mcp_sandbox, monkeypatch):
+    """When provider is voyage and no key is set, api_key_set should be False."""
+    cfg, mcp_server = mcp_sandbox
+    cfg.embeddings.provider = "voyage"
+    cfg.embeddings.api_key = None
+    cfg.embeddings.api_key_env = "_NOT_SET_EVER"
+    monkeypatch.delenv("_NOT_SET_EVER", raising=False)
+
+    raw = mcp_server.memory_status()
+    status = json.loads(raw)
+    assert status["api_key_set"] is False
 
 
 # ---------------------------------------------------------------------------

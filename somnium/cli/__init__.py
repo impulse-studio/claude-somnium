@@ -13,6 +13,7 @@ import typer
 from rich.console import Console
 
 from ..config import get_config
+from ..embeddings import get_embedder
 from ..storage.parquet_store import ParquetStore
 
 if TYPE_CHECKING:
@@ -49,18 +50,24 @@ def ensure_gitattributes(project_root: Path) -> bool:
     return True
 
 
-def global_store(embedding_dim: int = 1024) -> ParquetStore:
-    """Open the global vector store."""
+def global_store(embedding_dim: int | None = None) -> ParquetStore:
+    """Open the global vector store.
+
+    If *embedding_dim* is not provided it is resolved from the active
+    embedder (which reads the configured provider/model).
+    """
     cfg = get_config()
-    return ParquetStore(cfg.global_index_path, embedding_dim=embedding_dim)
+    dim = embedding_dim if embedding_dim is not None else get_embedder(cfg).embedding_dim
+    return ParquetStore(cfg.global_index_path, embedding_dim=dim)
 
 
-def project_store(embedding_dim: int = 1024) -> ParquetStore | None:
+def project_store(embedding_dim: int | None = None) -> ParquetStore | None:
     """Open the project vector store (None if no project detected)."""
     cfg = get_config()
     if not cfg.project_index_path:
         return None
-    return ParquetStore(cfg.project_index_path, embedding_dim=embedding_dim)
+    dim = embedding_dim if embedding_dim is not None else get_embedder(cfg).embedding_dim
+    return ParquetStore(cfg.project_index_path, embedding_dim=dim)
 
 
 # --- Register sub-typer apps (memory, config, dream) ----------------------

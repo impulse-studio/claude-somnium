@@ -42,14 +42,19 @@ mcp = FastMCP("somnium")
 # ----------------------------------------------------------------------
 
 
+def _embedding_dim(config: SomniumConfig) -> int:
+    """Resolve the embedding dimension from the active embedder."""
+    return get_embedder(config).embedding_dim
+
+
 def _global_store(config: SomniumConfig) -> ParquetStore:
-    return ParquetStore(config.global_index_path)
+    return ParquetStore(config.global_index_path, embedding_dim=_embedding_dim(config))
 
 
 def _project_store(config: SomniumConfig) -> ParquetStore | None:
     if not config.project_index_path:
         return None
-    return ParquetStore(config.project_index_path)
+    return ParquetStore(config.project_index_path, embedding_dim=_embedding_dim(config))
 
 
 def _search_all(
@@ -259,7 +264,7 @@ def memory_write(
 
     # Reindex this single file so it becomes searchable immediately.
     if store_path is not None:
-        with ParquetStore(store_path) as store:
+        with ParquetStore(store_path, embedding_dim=_embedding_dim(config)) as store:
             index_single_file(store=store, path=target_path, kind=kind, config=config)
 
     return json.dumps(
@@ -330,6 +335,7 @@ def injection_debug(session_id: str = "") -> str:
 def memory_status() -> str:
     """Quick health/status snapshot of the Somnium indexes."""
     config = get_config()
+    provider = config.embeddings.provider
     out: dict = {
         "global_index": str(config.global_index_path),
         "global_index_exists": config.global_index_path.exists(),
@@ -340,14 +346,17 @@ def memory_status() -> str:
         "project_index_exists": bool(
             config.project_index_path and config.project_index_path.exists()
         ),
-        "voyage_key_set": config.embeddings.resolve_api_key() is not None,
+        "embeddings_provider": provider,
+        "embeddings_model_text": config.embeddings.model_text,
+        "embeddings_model_code": config.embeddings.model_code,
+        "api_key_set": config.embeddings.resolve_api_key() is not None if provider == "voyage" else True,
         "dream_enabled": config.dream.enabled,
     }
     if config.global_index_path.exists():
         with _global_store(config) as store:
             out["global_stats"] = store.stats()
     if config.project_index_path and config.project_index_path.exists():
-        with ParquetStore(config.project_index_path) as store:
+        with ParquetStore(config.project_index_path, embedding_dim=_embedding_dim(config)) as store:
             out["project_stats"] = store.stats()
     return json.dumps(out, indent=2)
 

@@ -7,7 +7,7 @@ import subprocess
 
 import typer
 
-from ..config import reset_config_cache
+from ..config import load_config, reset_config_cache
 from ..hooks.install import install_hooks
 from . import app, console
 
@@ -42,13 +42,22 @@ def update(
     console.print("[green]✓[/] upgrade complete")
 
     if not skip_init:
-        _reregister_hooks()
+        _reinit()
 
 
-def _reregister_hooks() -> None:
+def _reinit() -> None:
+    """Re-setup directories and hooks after upgrade (non-interactive)."""
     console.print()
-    console.print("[bold]Re-registering hooks + MCP server[/]")
+    console.print("[bold]Re-initializing (keeping existing settings)[/]")
     reset_config_cache()
+    cfg = load_config()
+
+    # Ensure global directories exist (new versions may add new subdirs)
+    from .init import _setup_global
+
+    _setup_global(cfg, force=False)
+
+    # Re-register hooks with new binary paths
     try:
         actions = install_hooks()
         for action in actions:

@@ -11,6 +11,10 @@ runner = CliRunner()
 
 
 class _FakeEmbedder:
+    @property
+    def embedding_dim(self):
+        return 4
+
     def embed(self, texts, *, kind="text", input_type="document"):
         return EmbedResult(
             embeddings=[[1.0, 0.0, 0.0, 0.0] for _ in texts],

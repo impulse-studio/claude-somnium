@@ -27,6 +27,7 @@ class EmbeddingsConfig(BaseModel):
     api_key_env: str = "VOYAGE_API_KEY"
     api_key: str | None = None
     batch_size: int = 64
+    ollama_base_url: str = "http://localhost:11434"
 
     def resolve_api_key(self) -> str | None:
         if self.api_key:

@@ -3,15 +3,17 @@
 # You can override any key per-project in <repo>/.claude/somnium/project.toml.
 
 [embeddings]
-# Provider for embeddings. Only "voyage" is supported in Phase 1.
+# Provider: "voyage" (remote, API key required) or "ollama" (local, free).
 provider = "voyage"
 model_text = "voyage-3.5"
 model_code = "voyage-code-3"
-# Environment variable to read the API key from. You can also put the
-# key directly in `api_key = "..."` but env var is recommended.
+# Environment variable to read the API key from (Voyage only).
+# You can also put the key directly in `api_key = "..."` but env var is recommended.
 api_key_env = "VOYAGE_API_KEY"
 # api_key = ""
 batch_size = 64
+# Ollama server URL (only used when provider = "ollama").
+# ollama_base_url = "http://localhost:11434"
 
 [storage]
 # Where global memories and the global index live.

@@ -20,6 +20,10 @@ from somnium.embeddings.voyage import EmbedResult
 
 
 class _FakeEmbedder:
+    @property
+    def embedding_dim(self):
+        return 4
+
     def embed(self, texts, *, kind="text", input_type="document"):
         return EmbedResult(
             embeddings=[[1.0, 0.0, 0.0, 0.0] for _ in texts],
@@ -116,7 +120,7 @@ def test_help_lists_main_commands(runner, cli_sandbox):
 
 
 def test_init_creates_global_folders(runner, cli_sandbox):
-    result = runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["init", "--non-interactive"])
     assert result.exit_code == 0
     assert (cli_sandbox / "memory").is_dir()
     assert (cli_sandbox / "skills").is_dir()
@@ -125,15 +129,15 @@ def test_init_creates_global_folders(runner, cli_sandbox):
 
 
 def test_init_writes_config_template(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     config = (cli_sandbox / "config.toml").read_text()
     assert "[embeddings]" in config
     assert "voyage" in config
 
 
 def test_init_is_idempotent(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
-    result = runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
+    result = runner.invoke(app, ["init", "--non-interactive"])
     assert result.exit_code == 0
     # Second run reports "already installed" for the hooks
     assert "already" in result.stdout or "kept" in result.stdout
@@ -141,7 +145,7 @@ def test_init_is_idempotent(runner, cli_sandbox):
 
 def test_init_skip_hooks_does_not_register_anything(runner, cli_sandbox):
     """--skip-hooks must short-circuit the hook installer."""
-    result = runner.invoke(app, ["init", "--skip-hooks"])
+    result = runner.invoke(app, ["init", "--skip-hooks", "--non-interactive"])
     assert result.exit_code == 0
     # No "Registering hooks" line in output
     assert "Registering hooks" not in result.stdout
@@ -153,7 +157,7 @@ def test_init_skip_hooks_does_not_register_anything(runner, cli_sandbox):
 
 
 def test_status_runs_after_init(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     # Each section header is shown
@@ -165,7 +169,7 @@ def test_status_runs_after_init(runner, cli_sandbox):
 
 
 def test_status_reports_voyage_key_set(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     assert "set" in result.stdout
     assert "Voyage" in result.stdout
@@ -174,7 +178,7 @@ def test_status_reports_voyage_key_set(runner, cli_sandbox):
 def test_status_lists_each_hook_with_path(runner, cli_sandbox):
     """The Hooks section must show every event Somnium installs, with
     the absolute command path next to each."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     for event in ("PostToolUse", "Stop", "UserPromptSubmit"):
         assert event in result.stdout
@@ -185,7 +189,7 @@ def test_status_lists_each_hook_with_path(runner, cli_sandbox):
 
 def test_status_explains_when_indexes_are_updated(runner, cli_sandbox):
     """The status output documents the indexing lifecycle inline."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     assert "PostToolUse hook" in result.stdout
     assert "dream agent" in result.stdout or "dream" in result.stdout
@@ -194,7 +198,7 @@ def test_status_explains_when_indexes_are_updated(runner, cli_sandbox):
 def test_status_warns_when_code_index_not_built(runner, cli_sandbox):
     """A fresh project hasn't run `somnium index --code` yet — the
     status should say so explicitly with the command to run."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     # The code index section should show "not built" or the command hint.
     # In our sandbox there's no project root, so the section says
@@ -204,7 +208,7 @@ def test_status_warns_when_code_index_not_built(runner, cli_sandbox):
 
 def test_status_no_emojis_in_section_headers(runner, cli_sandbox):
     """We use plain text section dividers, not emojis."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["status"])
     for emoji in ("🧠", "📦", "🪝", "🔌", "⚙️"):
         assert emoji not in result.stdout
@@ -217,7 +221,7 @@ def test_status_no_emojis_in_section_headers(runner, cli_sandbox):
 
 def test_index_friendly_error_without_voyage_key(runner, cli_sandbox, monkeypatch):
     """Without VOYAGE_API_KEY, index must produce a clean error, not a traceback."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     from somnium.config import reset_config_cache
 
@@ -232,7 +236,7 @@ def test_index_friendly_error_without_voyage_key(runner, cli_sandbox, monkeypatc
 
 def test_index_runs_with_no_memories(runner, cli_sandbox):
     """Index on an empty memory dir is a no-op, exit 0."""
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["index"])
     assert result.exit_code == 0
     assert "embedded 0" in result.stdout
@@ -244,7 +248,7 @@ def test_index_runs_with_no_memories(runner, cli_sandbox):
 
 
 def test_uninstall_removes_hooks(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     result = runner.invoke(app, ["uninstall"])
     assert result.exit_code == 0
     assert "done" in result.stdout.lower() or "PostToolUse" in result.stdout
@@ -259,7 +263,7 @@ def test_uninstall_removes_hooks(runner, cli_sandbox):
 
 
 def test_uninstall_keeps_data_by_default(runner, cli_sandbox):
-    runner.invoke(app, ["init"])
+    runner.invoke(app, ["init", "--non-interactive"])
     # Drop a fake memory file to verify it survives uninstall
     (cli_sandbox / "memory" / "keep.md").write_text("# keep me")
     runner.invoke(app, ["uninstall"])

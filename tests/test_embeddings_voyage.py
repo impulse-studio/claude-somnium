@@ -12,12 +12,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from somnium.config import SomniumConfig
+from somnium.embeddings import get_embedder
 from somnium.embeddings import voyage as voyage_module
+from somnium.embeddings.base import EmbedResult
 from somnium.embeddings.voyage import (
     DEFAULT_EMBEDDING_DIM,
-    EmbedResult,
     VoyageEmbedder,
-    get_embedder,
 )
 
 
