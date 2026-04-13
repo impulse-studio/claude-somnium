@@ -13,7 +13,7 @@ from pathlib import Path
 from somnium.config import load_config
 from somnium.embeddings import get_embedder
 from somnium.indexer import index_directory
-from somnium.storage.vector import VectorStore
+from somnium.storage.parquet_store import ParquetStore
 
 
 def test_embed_and_search_round_trip(somnium_sandbox):
@@ -32,7 +32,7 @@ def test_embed_and_search_round_trip(somnium_sandbox):
     )
 
     # Index with real Voyage embeddings
-    with VectorStore(config.global_index_path) as store:
+    with ParquetStore(config.global_index_path) as store:
         stats = index_directory(
             store=store,
             directory=mem_dir,
@@ -69,7 +69,7 @@ def test_code_index_and_search(somnium_sandbox):
     from somnium.code.indexer import index_repo_code
 
     assert config.project_code_index_path is not None
-    with VectorStore(config.project_code_index_path) as store:
+    with ParquetStore(config.project_code_index_path) as store:
         stats = index_repo_code(root=project, store=store, config=config)
         assert stats.files_embedded >= 1
 
@@ -88,7 +88,7 @@ def test_hash_skip_on_second_index(somnium_sandbox):
     mem_dir = somnium_home / "memory"
     (mem_dir / "note.md").write_text("# Note\n\nA stable note.\n")
 
-    with VectorStore(config.global_index_path) as store:
+    with ParquetStore(config.global_index_path) as store:
         first = index_directory(
             store=store, directory=mem_dir, kind="memory_global", config=config
         )
@@ -130,7 +130,7 @@ def test_memory_write_mcp_tool(somnium_sandbox):
         # Searchable immediately
         embedder = get_embedder(config)
         query_vec = embedder.embed_query("do we need type hints in python")
-        with VectorStore(config.global_index_path) as store:
+        with ParquetStore(config.global_index_path) as store:
             hits = store.search(query_vec, top_k=3, scopes=["global"])
 
         assert len(hits) >= 1
