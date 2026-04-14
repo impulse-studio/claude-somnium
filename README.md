@@ -236,6 +236,8 @@ somnium search "query" [-k 5] [-s scope] [-t tags]
                                         scopes: all|global|project|skills|code
                                         tags: comma-separated filter (e.g. python,git)
 somnium status                           full health snapshot (indexes, hooks, MCP)
+somnium status --install-line            add the Somnium status bar to Claude Code
+somnium status --uninstall-line          remove the status bar
 somnium dream list [-n 10] [--all] [--json]
                                         browse recent dream session digests
 somnium dream run [-t path] [--force]    manually run the dream agent
@@ -249,6 +251,29 @@ somnium update [--skip-init]             upgrade to latest + re-register hooks
 somnium config get|set|list|path         read/write config without editing TOML
 somnium uninstall [--delete-data]        remove hooks; data is kept by default
 ```
+
+## Status line
+
+Somnium ships an optional status bar for Claude Code that replaces the
+default one-liner at the bottom of the terminal:
+
+```
+Opus 4.6 (1M context) | $0.15 | 23% (1h04m) | 10% (3d04h) | Ctx: [ ▓▓▓▓░░░░░░░░ ] - 3 skills & 5 mem - 14.5k
+```
+
+It shows, left to right: model name, session cost, 5-hour rate limit
+usage (with reset countdown), 7-day rate limit, a context window fill
+bar, how many Somnium skills and memories were injected this session,
+and total token count.
+
+```bash
+somnium status --install-line    # enable it
+somnium status --uninstall-line  # remove it
+```
+
+Requires `jq` on your `PATH`. The status line refreshes every 5
+seconds. Run `somnium status` — if the line isn't installed yet, it
+prints a tip reminding you.
 
 ## Slash commands
 
