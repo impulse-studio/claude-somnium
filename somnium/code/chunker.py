@@ -115,6 +115,17 @@ def file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def _is_readable_file(path: Path, max_file_bytes: int) -> bool:
+    """Check that *path* is a readable, non-empty, non-oversized file."""
+    if not path.exists() or not path.is_file():
+        return False
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return False
+    return 0 < size <= max_file_bytes
+
+
 def chunk_source_file(
     path: Path,
     *,
@@ -122,20 +133,23 @@ def chunk_source_file(
     overlap_ratio: float = 0.25,
     max_file_bytes: int = 500_000,
 ) -> tuple[str, list[CodeChunk]]:
-    """Split a source file into overlapping line groups.
+    """Split a source file into chunks.
 
+    Tries AST-aware chunking (tree-sitter) first; falls back to fixed-line
+    overlapping windows when the language is unsupported or parsing fails.
     Huge files (> max_file_bytes) are skipped and return empty chunks.
     """
-    if not path.exists() or not path.is_file():
+    if not _is_readable_file(path, max_file_bytes):
         return "", []
 
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return "", []
-    if size > max_file_bytes or size == 0:
-        return "", []
+    # Try AST-aware chunking first
+    from .ast_chunker import ast_chunk_source_file
 
+    ast_result = ast_chunk_source_file(path, chunk_lines=chunk_lines, overlap_ratio=overlap_ratio)
+    if ast_result is not None:
+        return ast_result
+
+    # Fallback: fixed-line overlapping windows
     try:
         raw = path.read_text(encoding="utf-8", errors="replace")
     except (OSError, UnicodeDecodeError):

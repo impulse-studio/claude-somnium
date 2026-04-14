@@ -18,14 +18,6 @@
 - **`global_skill` is not a valid dream category** — removed from schema and router. Valid categories: `project_skill`, `global_memory`, `project_memory`, `claude_md_patch`.
 <!-- somnium auto-appended 2026-04-10T14:29:52.888741 -->
 - **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
-<!-- somnium auto-appended 2026-04-10T14:45:58.670011 -->
-- **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
-<!-- somnium auto-appended 2026-04-10T15:16:53.704689 -->
-Remove the duplicate line so this entry appears exactly once:
-
-```
-- **`somnium memory` subcommands** (`list`, `show`, `rm`, `merge`, `move`) live in `somnium/cli_memory.py`, registered via `app.add_typer(memory_app, name="memory")` in `cli.py`.
-```
-
-The CLAUDE.md currently contains that line twice. Delete the second occurrence.
+<!-- somnium auto-appended 2026-04-14T08:21:09.492819+00:00 -->
+- **Onboarding must mirror config**: whenever a new field is added to `SomniumConfig` (or any sub-model), update the corresponding step in `somnium/cli/init.py` (`_step_embeddings`, `_step_dream`, `_step_context_injection`, `_step_code_search`), its `_summary_*` helper, the `somnium/templates/config.toml` template, and the tests in `tests/test_cli_init_onboarding.py`. Never add a config option without wiring it into the wizard.
 <!-- somnium:dream:end -->
