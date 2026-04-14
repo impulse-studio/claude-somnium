@@ -74,7 +74,7 @@ def test_update_uv_success(monkeypatch):
         "run",
         lambda *a, **kw: type("R", (), {"returncode": 0, "stdout": "upgraded", "stderr": ""})(),
     )
-    monkeypatch.setattr(update_mod, "_reinit", lambda: None)
+    monkeypatch.setattr(update_mod, "_reinit", lambda **kw: None)
     result = runner.invoke(app, ["update"])
     assert result.exit_code == 0
     assert "upgrade complete" in result.output
@@ -108,9 +108,9 @@ def test_update_skip_init(monkeypatch):
     reregister_called = {"v": False}
     original = update_mod._reinit
 
-    def _track():
+    def _track(**kw):
         reregister_called["v"] = True
-        original()
+        original(**kw)
 
     monkeypatch.setattr(update_mod, "_reinit", _track)
     result = runner.invoke(app, ["update", "--skip-init"])

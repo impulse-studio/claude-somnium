@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import tomllib
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ from ..hooks.install import install_hooks
 from . import app, console, ensure_gitattributes
 
 # ------------------------------------------------------------------
-# Onboarding wizard
+# Helpers
 # ------------------------------------------------------------------
 
 _PROVIDERS = [
@@ -25,27 +26,127 @@ _PROVIDERS = [
 ]
 
 
+def _ask_or_abort(question: Any) -> Any:
+    """Call .ask() on a questionary question, raise typer.Abort if None."""
+    result = question.ask()
+    if result is None:
+        raise typer.Abort
+    return result
+
+
+def _validate_positive_int(text: str) -> bool | str:
+    """Questionary validator for positive integers."""
+    try:
+        val = int(text)
+        if val <= 0:
+            return "Must be a positive integer"
+    except ValueError:
+        return "Must be a positive integer"
+    else:
+        return True
+
+
+def _template_defaults(section: str, key: str | None = None) -> Any:
+    """Load a default value from the packaged templates/config.toml."""
+    with resources.files("somnium.templates").joinpath("config.toml").open("rb") as fh:
+        tmpl = tomllib.load(fh)
+    data = tmpl.get(section, {})
+    if key is not None:
+        return data.get(key)
+    return data
+
+
+# ------------------------------------------------------------------
+# Summary helpers (plain text for questionary Choice labels)
+# ------------------------------------------------------------------
+
+
+def _summary_embeddings(cfg: SomniumConfig) -> str:
+    e = cfg.embeddings
+    return f"{e.provider}, {e.model_text} / {e.model_code}"
+
+
+def _summary_dream(cfg: SomniumConfig) -> str:
+    d = cfg.dream
+    status = "enabled" if d.enabled else "disabled"
+    gate = f"gate: {d.gate.min_user_messages}+ msgs"
+    if d.gate.llm_gate_enabled:
+        gate += ", LLM gate on"
+    return f"{status}, model={d.model}, {gate}"
+
+
+def _summary_context_injection(cfg: SomniumConfig) -> str:
+    c = cfg.context_injection
+    status = "enabled" if c.enabled else "disabled"
+    rerank = "reranker=on" if c.reranker_enabled else "reranker=off"
+    return f"{status}, top_k={c.top_k}, budget={c.context_budget_tokens} tokens, {rerank}"
+
+
+def _summary_code_search(cfg: SomniumConfig) -> str:
+    cs = cfg.code_search
+    sym = "symbolic=on" if cs.symbolic_enabled else "symbolic=off"
+    sem = "semantic=on" if cs.semantic_enabled else "semantic=off"
+    return f"{sym}, {sem}, chunk={cs.semantic_chunk_lines} lines"
+
+
+# ------------------------------------------------------------------
+# Onboarding wizard — 4-step orchestrator
+# ------------------------------------------------------------------
+
+
 def _run_onboarding(existing_cfg: SomniumConfig | None) -> dict[str, Any] | None:
     """Interactive onboarding. Returns a dict of config overrides to write,
-    or *None* when the user chose to keep existing settings."""
+    or *None* when the user chose to keep existing settings at every step."""
+
+    console.print()
+    console.print("[bold cyan]Somnium setup wizard[/]  [dim](4 steps)[/]")
+    console.print("[dim]─────────────────────────────────[/]")
+
+    overrides: dict[str, Any] = {}
+
+    emb = _step_embeddings(existing_cfg)
+    if emb is not None:
+        overrides.update(emb)
+
+    dream = _step_dream(existing_cfg)
+    if dream is not None:
+        overrides.update(dream)
+
+    ctx = _step_context_injection(existing_cfg)
+    if ctx is not None:
+        overrides.update(ctx)
+
+    cs = _step_code_search(existing_cfg)
+    if cs is not None:
+        overrides.update(cs)
+
+    return overrides or None
+
+
+# ------------------------------------------------------------------
+# Step 1: Embedding provider
+# ------------------------------------------------------------------
+
+
+def _step_embeddings(existing_cfg: SomniumConfig | None) -> dict[str, Any] | None:
+    """Step 1: Choose embedding provider and models."""
+    console.print("\n[bold cyan]Step 1/4[/] [bold]Embedding provider[/]")
+    console.print("[dim]Choose the vector embedding backend for memory search.[/]")
 
     choices: list[questionary.Choice] = []
     if existing_cfg is not None:
         choices.append(
             questionary.Choice(
-                "Use existing settings",
+                f"Keep existing settings  ({_summary_embeddings(existing_cfg)})",
                 value="keep",
             )
         )
     choices.extend(_PROVIDERS)
 
-    provider = questionary.select(
+    provider = _ask_or_abort(questionary.select(
         "Which embedding provider do you want to use?",
         choices=choices,
-    ).ask()
-
-    if provider is None:
-        raise typer.Abort
+    ))
 
     if provider == "keep":
         return None
@@ -67,27 +168,21 @@ def _configure_voyage() -> dict[str, Any]:
         questionary.Choice(f"{name}  ({info.description}, {info.dim}d)", value=name)
         for name, info in voyage_models.items()
     ]
-    model_text = questionary.select(
+    model_text = _ask_or_abort(questionary.select(
         "Text embedding model:",
         choices=text_choices,
         default="voyage-3.5",
-    ).ask()
-    if model_text is None:
-        raise typer.Abort
+    ))
 
-    model_code = questionary.select(
+    model_code = _ask_or_abort(questionary.select(
         "Code embedding model:",
         choices=text_choices,
         default="voyage-code-3",
-    ).ask()
-    if model_code is None:
-        raise typer.Abort
+    ))
 
-    api_key = questionary.password(
+    api_key = _ask_or_abort(questionary.password(
         "Voyage API key (pa-...):",
-    ).ask()
-    if api_key is None:
-        raise typer.Abort
+    ))
 
     result: dict[str, Any] = {
         "model_text": model_text,
@@ -101,12 +196,10 @@ def _configure_voyage() -> dict[str, Any]:
 
 def _configure_ollama() -> dict[str, Any]:
     """Ask for Ollama-specific settings."""
-    base_url = questionary.text(
+    base_url = _ask_or_abort(questionary.text(
         "Ollama server URL:",
         default="http://localhost:11434",
-    ).ask()
-    if base_url is None:
-        raise typer.Abort
+    ))
 
     # Check connectivity
     from ..embeddings.ollama import check_ollama_running, list_ollama_models
@@ -151,26 +244,305 @@ def _configure_ollama() -> dict[str, Any]:
             questionary.Choice("nomic-embed-text  (Nomic general-purpose, 768d)", value="nomic-embed-text")
         )
 
-    model_text = questionary.select(
+    model_text = _ask_or_abort(questionary.select(
         "Text embedding model:",
         choices=model_choices,
         default=local_models[0] if local_models else "nomic-embed-text",
-    ).ask()
-    if model_text is None:
-        raise typer.Abort
+    ))
 
-    model_code = questionary.select(
+    model_code = _ask_or_abort(questionary.select(
         "Code embedding model (can be the same):",
         choices=model_choices,
         default=model_text,
-    ).ask()
-    if model_code is None:
-        raise typer.Abort
+    ))
 
     return {
         "model_text": model_text,
         "model_code": model_code,
         "ollama_base_url": base_url,
+    }
+
+
+# ------------------------------------------------------------------
+# Step 2: Dream settings
+# ------------------------------------------------------------------
+
+
+def _step_dream(existing_cfg: SomniumConfig | None) -> dict[str, Any] | None:
+    """Step 2: Dream mode settings."""
+    console.print("\n[dim]─────────────────────────────────[/]")
+    console.print("[bold cyan]Step 2/4[/] [bold]Dream mode[/]")
+    console.print("[dim]Consolidation agent that extracts memories after each session.[/]")
+
+    if existing_cfg is not None:
+        action = _ask_or_abort(questionary.select(
+            "Dream mode configuration:",
+            choices=[
+                questionary.Choice(
+                    f"Keep existing settings  ({_summary_dream(existing_cfg)})",
+                    value="keep",
+                ),
+                questionary.Choice("Configure dream settings", value="configure"),
+            ],
+        ))
+        if action == "keep":
+            return None
+
+    defaults = existing_cfg.dream if existing_cfg else SomniumConfig().dream
+
+    enabled = _ask_or_abort(questionary.confirm(
+        "Enable dream mode?",
+        default=defaults.enabled,
+    ))
+
+    if not enabled:
+        return {"dream": {"enabled": False}}
+
+    model = _ask_or_abort(questionary.text(
+        "Dream model:",
+        default=defaults.model,
+    ))
+
+    min_msgs = _ask_or_abort(questionary.text(
+        "Min user messages before dream triggers:",
+        default=str(defaults.gate.min_user_messages),
+        validate=_validate_positive_int,
+    ))
+
+    llm_gate = _ask_or_abort(questionary.confirm(
+        "Enable LLM gate? (costs ~$0.002/call, filters Q&A sessions)",
+        default=defaults.gate.llm_gate_enabled,
+    ))
+
+    gate_model = defaults.gate_model
+    if llm_gate:
+        gate_model = _ask_or_abort(questionary.text(
+            "Gate model (cheap pre-filter):",
+            default=defaults.gate_model,
+        ))
+
+    # Skip patterns
+    current_patterns = defaults.gate.skip_patterns
+    template_patterns = _template_defaults("dream", "gate")
+    if isinstance(template_patterns, dict):
+        template_patterns = template_patterns.get("skip_patterns", [])
+    else:
+        template_patterns = []
+
+    pattern_choices = [
+        questionary.Choice("Reset to defaults", value="defaults"),
+        questionary.Choice("Clear all patterns", value="clear"),
+    ]
+    if current_patterns:
+        pattern_choices.insert(0, questionary.Choice(
+            f"Keep current patterns  ({len(current_patterns)} rules)",
+            value="keep",
+        ))
+
+    pattern_action = _ask_or_abort(questionary.select(
+        "Skip patterns (sessions matching these bypass dreaming):",
+        choices=pattern_choices,
+    ))
+
+    if pattern_action == "keep":
+        skip_patterns = current_patterns
+    elif pattern_action == "defaults":
+        skip_patterns = template_patterns
+    else:
+        skip_patterns = []
+
+    return {
+        "dream": {
+            "enabled": True,
+            "model": model,
+            "gate_model": gate_model,
+            "gate": {
+                "min_user_messages": int(min_msgs),
+                "llm_gate_enabled": llm_gate,
+                "skip_patterns": skip_patterns,
+            },
+        }
+    }
+
+
+# ------------------------------------------------------------------
+# Step 3: Context injection
+# ------------------------------------------------------------------
+
+
+def _step_context_injection(existing_cfg: SomniumConfig | None) -> dict[str, Any] | None:
+    """Step 3: Context injection settings."""
+    console.print("\n[dim]─────────────────────────────────[/]")
+    console.print("[bold cyan]Step 3/4[/] [bold]Context injection[/]")
+    console.print("[dim]Injects relevant memories into every prompt automatically.[/]")
+
+    if existing_cfg is not None:
+        action = _ask_or_abort(questionary.select(
+            "Context injection configuration:",
+            choices=[
+                questionary.Choice(
+                    f"Keep existing settings  ({_summary_context_injection(existing_cfg)})",
+                    value="keep",
+                ),
+                questionary.Choice("Configure context injection", value="configure"),
+            ],
+        ))
+        if action == "keep":
+            return None
+
+    defaults = existing_cfg.context_injection if existing_cfg else SomniumConfig().context_injection
+
+    enabled = _ask_or_abort(questionary.confirm(
+        "Enable context injection?",
+        default=defaults.enabled,
+    ))
+
+    if not enabled:
+        return {"context_injection": {"enabled": False}}
+
+    top_k = _ask_or_abort(questionary.text(
+        "Top-K results per query:",
+        default=str(defaults.top_k),
+        validate=_validate_positive_int,
+    ))
+
+    budget = _ask_or_abort(questionary.text(
+        "Context budget (tokens):",
+        default=str(defaults.context_budget_tokens),
+        validate=_validate_positive_int,
+    ))
+
+    scope_action = _ask_or_abort(questionary.select(
+        "Memory scopes to search:",
+        choices=[
+            questionary.Choice(
+                "All scopes (project, global, skills)",
+                value="all",
+            ),
+            questionary.Choice(
+                "Project + global only",
+                value="project_global",
+            ),
+            questionary.Choice(
+                "Project only",
+                value="project",
+            ),
+        ],
+    ))
+
+    scopes_map = {
+        "all": ["project", "global", "skills"],
+        "project_global": ["project", "global"],
+        "project": ["project"],
+    }
+    scopes = scopes_map[scope_action]
+
+    reranker_enabled = _ask_or_abort(questionary.confirm(
+        "Enable reranker? (Voyage only, ~$0.0001/call for better relevance)",
+        default=defaults.reranker_enabled,
+    ))
+
+    reranker_model = defaults.reranker_model
+    if reranker_enabled:
+        reranker_model = _ask_or_abort(questionary.text(
+            "Reranker model:",
+            default=defaults.reranker_model,
+        ))
+
+    return {
+        "context_injection": {
+            "enabled": True,
+            "top_k": int(top_k),
+            "context_budget_tokens": int(budget),
+            "scopes": scopes,
+            "reranker_enabled": reranker_enabled,
+            "reranker_model": reranker_model,
+        }
+    }
+
+
+# ------------------------------------------------------------------
+# Step 4: Code search
+# ------------------------------------------------------------------
+
+
+def _step_code_search(existing_cfg: SomniumConfig | None) -> dict[str, Any] | None:
+    """Step 4: Code search settings."""
+    console.print("\n[dim]─────────────────────────────────[/]")
+    console.print("[bold cyan]Step 4/4[/] [bold]Code search[/]")
+    console.print("[dim]Semantic and symbolic search across your codebase.[/]")
+
+    if existing_cfg is not None:
+        action = _ask_or_abort(questionary.select(
+            "Code search configuration:",
+            choices=[
+                questionary.Choice(
+                    f"Keep existing settings  ({_summary_code_search(existing_cfg)})",
+                    value="keep",
+                ),
+                questionary.Choice("Configure code search", value="configure"),
+            ],
+        ))
+        if action == "keep":
+            return None
+
+    defaults = existing_cfg.code_search if existing_cfg else SomniumConfig().code_search
+
+    symbolic = _ask_or_abort(questionary.confirm(
+        "Enable symbolic code search?",
+        default=defaults.symbolic_enabled,
+    ))
+
+    semantic = _ask_or_abort(questionary.confirm(
+        "Enable semantic code search?",
+        default=defaults.semantic_enabled,
+    ))
+
+    chunk_lines = defaults.semantic_chunk_lines
+    if semantic:
+        chunk_lines_str = _ask_or_abort(questionary.text(
+            "Chunk size (lines per chunk):",
+            default=str(defaults.semantic_chunk_lines),
+            validate=_validate_positive_int,
+        ))
+        chunk_lines = int(chunk_lines_str)
+
+    # Ignore list
+    current_ignore = defaults.ignore
+    template_ignore = _template_defaults("code_search", "ignore") or []
+
+    ignore_choices = [
+        questionary.Choice(
+            f"Use defaults  ({', '.join(template_ignore[:4])}{'...' if len(template_ignore) > 4 else ''})",  # noqa: PLR2004
+            value="defaults",
+        ),
+        questionary.Choice("Clear ignore list (index everything)", value="clear"),
+    ]
+    if current_ignore:
+        ignore_choices.insert(0, questionary.Choice(
+            f"Keep current ignore list  ({len(current_ignore)} patterns)",
+            value="keep",
+        ))
+
+    ignore_action = _ask_or_abort(questionary.select(
+        "Ignore patterns for code indexing:",
+        choices=ignore_choices,
+    ))
+
+    if ignore_action == "keep":
+        ignore = current_ignore
+    elif ignore_action == "defaults":
+        ignore = template_ignore
+    else:
+        ignore = []
+
+    return {
+        "code_search": {
+            "symbolic_enabled": symbolic,
+            "semantic_enabled": semantic,
+            "semantic_chunk_lines": chunk_lines,
+            "ignore": ignore,
+        }
     }
 
 
@@ -226,8 +598,6 @@ def _invalidate_indices(cfg: SomniumConfig) -> None:
 
 def _write_config(cfg: SomniumConfig, overrides: dict[str, Any]) -> None:
     """Merge overrides into the global config.toml and write it."""
-    import tomllib
-
     global_config_path = cfg.global_root / "config.toml"
 
     # Read existing or load defaults
@@ -474,3 +844,4 @@ def _print_next_steps(cfg: SomniumConfig) -> None:
         f"  {step + 2}. Check [bold]somnium status[/] at any time to verify every "
         "index, hook, and the MCP connection in one shot."
     )
+    console.print()
