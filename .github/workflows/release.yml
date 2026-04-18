@@ -40,7 +40,7 @@ concurrency:
 jobs:
   release:
     name: Release (${{ inputs.bump }})
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     # The `pypi` environment scopes the OIDC token so PyPI can verify
     # that this exact workflow + environment is authorized to publish.
     # No protection rules are attached — there is no manual approval
